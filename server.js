@@ -6,10 +6,11 @@ const app = express();
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(express.json());
 
-// ========== JSONBIN CONFIG ==========
-const JSONBIN_API_KEY = process.env.JSONBIN_API_KEY;
-const JSONBIN_BIN_ID  = process.env.JSONBIN_BIN_ID;
-const JSONBIN_URL     = `https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`;
+// ========== CONFIG ==========
+const JSONBIN_API_KEY   = process.env.JSONBIN_API_KEY;
+const JSONBIN_BIN_ID    = process.env.JSONBIN_BIN_ID;
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const JSONBIN_URL       = `https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`;
 
 // ========== DATA HELPERS ==========
 async function loadData() {
@@ -20,7 +21,6 @@ async function loadData() {
     const json = await res.json();
     return json.record || { transactions: [], budgets: {} };
   } catch (e) {
-    console.error('Error cargando datos:', e.message);
     return { transactions: [], budgets: {} };
   }
 }
@@ -33,7 +33,7 @@ async function saveData(data) {
       body: JSON.stringify(data)
     });
   } catch (e) {
-    console.error('Error guardando datos:', e.message);
+    console.error('Error guardando:', e.message);
   }
 }
 
@@ -51,199 +51,249 @@ function getMonthTxs(txs, month, year) {
 const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
                 'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
-const CAT_KEYWORDS = {
-  comida:         ['comida','almuerzo','desayuno','cena','restaurante','mercado','supermercado','colmado','pizza','pollo'],
-  transporte:     ['transporte','gasolina','taxi','uber','carro','bus','metro','combustible'],
-  servicios:      ['luz','agua','internet','telefono','teléfono','claro','altice','edesur','edenorte','netflix','spotify'],
-  salud:          ['salud','medico','médico','farmacia','medicina','doctor','clinica','clínica','hospital'],
-  entretenimiento:['entretenimiento','cine','fiesta','salida','bar','disco','juego','viaje'],
-  ropa:           ['ropa','zapatos','camisa','pantalon','pantalón','zapato','tienda'],
-  educacion:      ['educacion','educación','escuela','universidad','libro','curso','colegio'],
-  salario:        ['salario','sueldo','pago','quincena','nomina','nómina'],
-  negocio:        ['negocio','venta','cobro','cliente','factura'],
-  inversion:      ['inversion','inversión','dividendo','interés','interes','ahorro'],
-};
-
-function detectCategory(text) {
-  const lower = text.toLowerCase();
-  for (const [cat, keywords] of Object.entries(CAT_KEYWORDS)) {
-    if (keywords.some(k => lower.includes(k))) return cat;
-  }
-  return 'otro';
-}
-
 const CAT_EMOJIS = {
   comida:'🍽️', transporte:'🚗', servicios:'💡', salud:'🏥',
   entretenimiento:'🎬', ropa:'👕', educacion:'📚', salario:'💼',
-  negocio:'🏪', inversion:'📈', otro:'📦', otro_inc:'💰', otro_exp:'📦'
+  negocio:'🏪', inversion:'📈', prestamo:'🤝', ahorro:'💰',
+  tarjeta:'💳', otro:'📦'
 };
 
-// ========== MESSAGE PARSER ==========
-function parseMessage(msg) {
-  const text = msg.trim().toLowerCase();
+const ACCOUNT_EMOJIS = { efectivo:'💵', banco:'🏦', tarjeta:'💳' };
 
-  // Commands
-  if (text === 'resumen' || text === 'balance' || text === 'hoy') return { cmd: 'resumen' };
-  if (text === 'alertas' || text === 'alerta') return { cmd: 'alertas' };
-  if (text === 'ayuda' || text === 'help' || text === 'comandos') return { cmd: 'ayuda' };
-  if (text.startsWith('presupuesto') && text.includes(' ')) return { cmd: 'set_budget', text };
-  if (text === 'presupuesto') return { cmd: 'ver_presupuesto' };
-  if (text === 'historial' || text === 'lista') return { cmd: 'historial' };
+// ========== AI PARSER ==========
+async function parseWithAI(message) {
+  if (!ANTHROPIC_API_KEY) return null;
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 200,
+        messages: [{
+          role: 'user',
+          content: `Analiza este mensaje financiero en español dominicano. Responde SOLO JSON sin texto adicional.
 
-  // INGRESO patterns
-  // "ingresé 15000 salario" / "recibí 5000 de negocio" / "gané 3000"
-  const incPatterns = [
-    /(?:ingres[eé]|recibi[oó]|recebi|gané|gane|cobré|cobre|entró|entro)\s+(\d+(?:[.,]\d+)?)\s*(.*)?/i,
-    /(\d+(?:[.,]\d+)?)\s+(?:de\s+)?(?:ingreso|entrada|income)\s*(.*)?/i,
-  ];
+Mensaje: "${message}"
 
-  for (const pattern of incPatterns) {
-    const m = text.match(pattern);
-    if (m) {
-      const amount = parseFloat(m[1].replace(',', '.'));
-      const desc = (m[2] || '').trim() || 'Ingreso';
-      const cat = detectCategory(desc || text);
-      return { cmd: 'add', type: 'ingreso', amount, desc: desc || 'Ingreso', cat };
-    }
+JSON:
+{
+  "type": "ingreso" | "egreso" | "comando",
+  "amount": numero o null,
+  "desc": "descripcion corta" o null,
+  "cat": "comida|transporte|servicios|salud|entretenimiento|ropa|educacion|salario|negocio|inversion|prestamo|ahorro|otro",
+  "account": "efectivo|banco|tarjeta" o null,
+  "cmd": "resumen|alertas|historial|presupuesto|ayuda|ver_cuentas|set_budget" o null,
+  "budget_cat": null o categoria si cmd=set_budget,
+  "budget_amount": null o monto si cmd=set_budget
+}
+
+Reglas:
+- "fui al colmado y gasté 350" → egreso, 350, "Colmado", comida, efectivo
+- "deposité el sueldo 28000" → ingreso, 28000, "Salario", salario, banco
+- "pagué luz 1200 con banco" → egreso, 1200, "Luz", servicios, banco
+- "ver cuentas" o "mis cuentas" → comando, ver_cuentas
+- "presupuesto comida 5000" → comando, set_budget, budget_cat: comida, budget_amount: 5000
+- Si no hay cuenta mencionada → efectivo por defecto`
+        }]
+      })
+    });
+    const data = await response.json();
+    const text = data.content[0].text.trim().replace(/```json|```/g, '').trim();
+    return JSON.parse(text);
+  } catch (e) {
+    console.error('AI error:', e.message);
+    return null;
   }
+}
 
-  // EGRESO patterns
-  // "gasté 500 en comida" / "pagué 1200 luz" / "compré 800 ropa"
-  const expPatterns = [
-    /(?:gast[eé]|pagu[eé]|compr[eé]|pagué|pague|gasté|gaste|desembolsé)\s+(\d+(?:[.,]\d+)?)\s*(?:en\s+)?(.*)?/i,
-    /(\d+(?:[.,]\d+)?)\s+(?:en|de|para)\s+(.*)/i,
-  ];
+// ========== FALLBACK PARSER ==========
+const CAT_KEYWORDS = {
+  comida:          ['comida','almuerzo','desayuno','cena','restaurante','mercado','colmado','pizza','pollo'],
+  transporte:      ['transporte','gasolina','taxi','uber','carro','bus','combustible'],
+  servicios:       ['luz','agua','internet','telefono','claro','altice','edesur','netflix','spotify'],
+  salud:           ['salud','medico','farmacia','medicina','doctor','clinica','hospital'],
+  entretenimiento: ['entretenimiento','cine','fiesta','salida','bar','disco','viaje'],
+  ropa:            ['ropa','zapatos','camisa','pantalon','tienda'],
+  educacion:       ['escuela','universidad','libro','curso','colegio'],
+  salario:         ['salario','sueldo','quincena','nomina','deposité','deposite'],
+  negocio:         ['negocio','venta','cobro','cliente','factura'],
+  inversion:       ['inversion','dividendo','interes','ahorro'],
+};
 
-  for (const pattern of expPatterns) {
-    const m = text.match(pattern);
-    if (m) {
-      const amount = parseFloat(m[1].replace(',', '.'));
-      const desc = (m[2] || '').trim() || 'Gasto';
-      const cat = detectCategory(desc || text);
-      return { cmd: 'add', type: 'egreso', amount, desc: desc || 'Gasto', cat };
-    }
-  }
+const ACCOUNT_KEYWORDS = {
+  banco:   ['banco','transfer','transferencia','deposito','cuenta'],
+  tarjeta: ['tarjeta','card','credito','débito','debito'],
+};
 
-  return { cmd: 'unknown', text: msg };
+function detectCat(text) {
+  const l = text.toLowerCase();
+  for (const [cat, kws] of Object.entries(CAT_KEYWORDS))
+    if (kws.some(k => l.includes(k))) return cat;
+  return 'otro';
+}
+
+function detectAcc(text) {
+  const l = text.toLowerCase();
+  if (ACCOUNT_KEYWORDS.tarjeta.some(k => l.includes(k))) return 'tarjeta';
+  if (ACCOUNT_KEYWORDS.banco.some(k => l.includes(k))) return 'banco';
+  return 'efectivo';
+}
+
+function fallbackParse(msg) {
+  const t = msg.trim().toLowerCase();
+  if (['resumen','balance','hoy'].includes(t)) return { type:'comando', cmd:'resumen' };
+  if (['alertas','alerta'].includes(t)) return { type:'comando', cmd:'alertas' };
+  if (['ayuda','help','comandos'].includes(t)) return { type:'comando', cmd:'ayuda' };
+  if (['ver cuentas','cuentas','mis cuentas'].includes(t)) return { type:'comando', cmd:'ver_cuentas' };
+  if (t === 'presupuesto') return { type:'comando', cmd:'presupuesto' };
+  if (t === 'historial' || t === 'lista') return { type:'comando', cmd:'historial' };
+
+  const bm = t.match(/presupuesto\s+(\w+)\s+(\d+)/);
+  if (bm) return { type:'comando', cmd:'set_budget', budget_cat: bm[1], budget_amount: parseFloat(bm[2]) };
+
+  const inc = t.match(/(?:ingres[eé]|recibi[oó]|gané|gane|cobré|deposité|deposite)\s+(\d+(?:[.,]\d+)?)\s*(.*)?/i);
+  if (inc) return { type:'ingreso', amount: parseFloat(inc[1].replace(',','.')), desc: inc[2]||'Ingreso', cat: detectCat(inc[2]||t), account: detectAcc(t) };
+
+  const exp = t.match(/(?:gast[eé]|pagu[eé]|compr[eé])\s+(\d+(?:[.,]\d+)?)\s*(?:en\s+)?(.*)?/i);
+  if (exp) return { type:'egreso', amount: parseFloat(exp[1].replace(',','.')), desc: exp[2]||'Gasto', cat: detectCat(exp[2]||t), account: detectAcc(t) };
+
+  const num = t.match(/(\d+(?:[.,]\d+)?)\s+(?:en|de|para)\s+(.*)/i);
+  if (num) return { type:'egreso', amount: parseFloat(num[1].replace(',','.')), desc: num[2]||'Gasto', cat: detectCat(num[2]||t), account: detectAcc(t) };
+
+  return null;
 }
 
 // ========== BOT LOGIC ==========
 async function handleMessage(msgText) {
   const data = await loadData();
-  const parsed = parseMessage(msgText);
   const now = new Date();
   const month = now.getMonth();
   const year = now.getFullYear();
   const monthTxs = getMonthTxs(data.transactions, month, year);
 
-  switch (parsed.cmd) {
+  let parsed = await parseWithAI(msgText) || fallbackParse(msgText);
 
-    case 'add': {
-      const tx = {
-        id: Date.now(),
-        type: parsed.type,
-        amount: parsed.amount,
-        desc: parsed.desc,
-        cat: parsed.cat,
-        date: now.toISOString().split('T')[0],
-      };
-      data.transactions.push(tx);
-      await saveData(data);
-
-      const emoji = CAT_EMOJIS[parsed.cat] || '📦';
-      const sign = parsed.type === 'ingreso' ? '▲' : '▼';
-      const word = parsed.type === 'ingreso' ? 'Ingreso' : 'Egreso';
-
-      // Check budget alert
-      let budgetAlert = '';
-      if (parsed.type === 'egreso' && data.budgets[parsed.cat]) {
-        const limit = data.budgets[parsed.cat];
-        const totalCat = getMonthTxs(data.transactions, month, year)
-          .filter(t => t.type === 'egreso' && t.cat === parsed.cat)
-          .reduce((s, t) => s + t.amount, 0);
-        const pct = (totalCat / limit) * 100;
-        if (pct >= 100) budgetAlert = `\n\n⚠️ *Alerta:* Superaste el presupuesto de ${emoji} ${parsed.cat} (${fmt(totalCat)} / ${fmt(limit)})`;
-        else if (pct >= 80) budgetAlert = `\n\n⚠️ *Aviso:* Llevas el ${pct.toFixed(0)}% del presupuesto de ${emoji} ${parsed.cat}`;
-      }
-
-      return `✅ *${word} registrado*\n\n${sign} ${emoji} ${parsed.desc}\n💵 ${fmt(parsed.amount)}\n📂 ${parsed.cat}\n📅 ${tx.date}${budgetAlert}`;
-    }
-
-    case 'resumen': {
-      const inc = monthTxs.filter(t => t.type === 'ingreso').reduce((s, t) => s + t.amount, 0);
-      const exp = monthTxs.filter(t => t.type === 'egreso').reduce((s, t) => s + t.amount, 0);
-      const bal = inc - exp;
-      const balEmoji = bal >= 0 ? '✅' : '🚨';
-      return `💰 *Resumen — ${MONTHS[month]} ${year}*\n\n▲ Ingresos: *${fmt(inc)}*\n▼ Egresos: *${fmt(exp)}*\n\n${balEmoji} Balance: *${fmt(bal)}*\n\n_${monthTxs.length} movimiento(s) este mes_`;
-    }
-
-    case 'alertas': {
-      const inc = monthTxs.filter(t => t.type === 'ingreso').reduce((s, t) => s + t.amount, 0);
-      const exp = monthTxs.filter(t => t.type === 'egreso').reduce((s, t) => s + t.amount, 0);
-      let alerts = [];
-
-      if (inc > 0) {
-        const pct = (exp / inc) * 100;
-        if (pct >= 100) alerts.push(`🚨 Egresos superaron ingresos (${pct.toFixed(0)}%)`);
-        else if (pct >= 80) alerts.push(`⚠️ Gastaste el ${pct.toFixed(0)}% de tus ingresos`);
-        else alerts.push(`✅ Finanzas saludables (${pct.toFixed(0)}% gastado)`);
-      }
-
-      for (const [cat, limit] of Object.entries(data.budgets)) {
-        const spent = monthTxs.filter(t => t.type === 'egreso' && t.cat === cat).reduce((s, t) => s + t.amount, 0);
-        const pct = (spent / limit) * 100;
-        const emoji = CAT_EMOJIS[cat] || '📦';
-        if (pct >= 100) alerts.push(`🚨 ${emoji} ${cat}: ${fmt(spent)} / ${fmt(limit)} (SUPERADO)`);
-        else if (pct >= 80) alerts.push(`⚠️ ${emoji} ${cat}: ${pct.toFixed(0)}% usado`);
-      }
-
-      return `🔔 *Alertas — ${MONTHS[month]}*\n\n${alerts.join('\n') || 'Sin alertas activas ✅'}`;
-    }
-
-    case 'historial': {
-      const last5 = [...monthTxs].reverse().slice(0, 5);
-      if (!last5.length) return `📭 No hay movimientos en ${MONTHS[month]}`;
-      const lines = last5.map(t => {
-        const emoji = CAT_EMOJIS[t.cat] || '📦';
-        const sign = t.type === 'ingreso' ? '▲' : '▼';
-        return `${sign} ${emoji} ${t.desc} — ${fmt(t.amount)}`;
-      });
-      return `📋 *Últimos movimientos*\n\n${lines.join('\n')}`;
-    }
-
-    case 'ver_presupuesto': {
-      if (!Object.keys(data.budgets).length) return '📊 No tienes presupuestos configurados.\n\nEnvía: *presupuesto comida 5000* para configurar uno.';
-      const lines = Object.entries(data.budgets).map(([cat, limit]) => {
-        const spent = monthTxs.filter(t => t.type === 'egreso' && t.cat === cat).reduce((s, t) => s + t.amount, 0);
-        const pct = limit > 0 ? ((spent / limit) * 100).toFixed(0) : 0;
-        const emoji = CAT_EMOJIS[cat] || '📦';
-        const bar = pct >= 100 ? '🔴' : pct >= 80 ? '🟡' : '🟢';
-        return `${bar} ${emoji} ${cat}: ${fmt(spent)} / ${fmt(limit)} (${pct}%)`;
-      });
-      return `📊 *Presupuestos — ${MONTHS[month]}*\n\n${lines.join('\n')}`;
-    }
-
-    case 'set_budget': {
-      // "presupuesto comida 5000"
-      const m = parsed.text.match(/presupuesto\s+(\w+)\s+(\d+(?:[.,]\d+)?)/i);
-      if (!m) return '❌ Formato incorrecto.\n\nUsa: *presupuesto [categoría] [monto]*\nEjemplo: *presupuesto comida 5000*';
-      const cat = m[1].toLowerCase();
-      const limit = parseFloat(m[2].replace(',', '.'));
-      data.budgets[cat] = limit;
-      await saveData(data);
-      return `✅ Presupuesto configurado:\n\n${CAT_EMOJIS[cat] || '📦'} *${cat}*: ${fmt(limit)} / mes`;
-    }
-
-    case 'ayuda':
-      return `🤖 *MisCuentas Bot — Comandos*\n\n*Registrar:*\ngasté 500 en comida\ningresé 15000 salario\npagué 1200 luz\n\n*Consultar:*\nresumen — balance del mes\nalertas — ver alertas\nhistorial — últimos 5 mov.\npresupuesto — ver límites\n\n*Configurar:*\npresupuesto comida 5000\n\n_Moneda: Pesos Dominicanos (RD$)_`;
-
-    default:
-      return `🤔 No entendí ese mensaje.\n\nEnvía *ayuda* para ver los comandos disponibles.\n\nEjemplos:\n• gasté 500 en comida\n• ingresé 15000 salario\n• resumen`;
+  if (!parsed) {
+    return `🤔 No entendí ese mensaje.\n\nEnvía *ayuda* para ver los comandos.\n\nEjemplos:\n• fui al colmado y gasté 350\n• pagué la luz 1200 con banco\n• deposité el sueldo 28000`;
   }
+
+  const cmd = parsed.cmd;
+
+  // ---- RESUMEN ----
+  if (cmd === 'resumen' || parsed.type === 'comando' && cmd === 'resumen') {
+    const inc = monthTxs.filter(t => t.type==='ingreso').reduce((s,t)=>s+t.amount,0);
+    const exp = monthTxs.filter(t => t.type==='egreso').reduce((s,t)=>s+t.amount,0);
+    const bal = inc - exp;
+    return `💰 *Resumen — ${MONTHS[month]} ${year}*\n\n▲ Ingresos: *${fmt(inc)}*\n▼ Egresos: *${fmt(exp)}*\n\n${bal>=0?'✅':'🚨'} Balance: *${fmt(bal)}*\n\n_${monthTxs.length} movimiento(s)_\n\nEnvía *cuentas* para ver por cuenta.`;
+  }
+
+  // ---- VER CUENTAS ----
+  if (cmd === 'ver_cuentas') {
+    const accs = ['efectivo','banco','tarjeta'];
+    const lines = accs.map(acc => {
+      const inc = monthTxs.filter(t=>t.type==='ingreso'&&t.account===acc).reduce((s,t)=>s+t.amount,0);
+      const exp = monthTxs.filter(t=>t.type==='egreso'&&t.account===acc).reduce((s,t)=>s+t.amount,0);
+      return `${ACCOUNT_EMOJIS[acc]} *${acc.charAt(0).toUpperCase()+acc.slice(1)}*\n   ▲ ${fmt(inc)}  ▼ ${fmt(exp)}\n   Balance: ${fmt(inc-exp)}`;
+    });
+    return `🏦 *Cuentas — ${MONTHS[month]}*\n\n${lines.join('\n\n')}`;
+  }
+
+  // ---- ALERTAS ----
+  if (cmd === 'alertas') {
+    const inc = monthTxs.filter(t=>t.type==='ingreso').reduce((s,t)=>s+t.amount,0);
+    const exp = monthTxs.filter(t=>t.type==='egreso').reduce((s,t)=>s+t.amount,0);
+    let alerts = [];
+    if (inc > 0) {
+      const pct = (exp/inc)*100;
+      if (pct>=100) alerts.push(`🚨 Egresos superaron ingresos (${pct.toFixed(0)}%)`);
+      else if (pct>=80) alerts.push(`⚠️ Gastaste el ${pct.toFixed(0)}% de tus ingresos`);
+      else alerts.push(`✅ Finanzas saludables (${pct.toFixed(0)}% gastado)`);
+    }
+    for (const [cat,limit] of Object.entries(data.budgets)) {
+      const spent = monthTxs.filter(t=>t.type==='egreso'&&t.cat===cat).reduce((s,t)=>s+t.amount,0);
+      const pct = (spent/limit)*100;
+      const e = CAT_EMOJIS[cat]||'📦';
+      if (pct>=100) alerts.push(`🚨 ${e} ${cat}: SUPERADO (${fmt(spent)})`);
+      else if (pct>=80) alerts.push(`⚠️ ${e} ${cat}: ${pct.toFixed(0)}% usado`);
+    }
+    return `🔔 *Alertas — ${MONTHS[month]}*\n\n${alerts.join('\n')||'Sin alertas ✅'}`;
+  }
+
+  // ---- HISTORIAL ----
+  if (cmd === 'historial') {
+    const last5 = [...monthTxs].reverse().slice(0,5);
+    if (!last5.length) return `📭 Sin movimientos en ${MONTHS[month]}`;
+    return `📋 *Últimos movimientos*\n\n${last5.map(t=>`${t.type==='ingreso'?'▲':'▼'} ${CAT_EMOJIS[t.cat]||'📦'} ${t.desc} — ${fmt(t.amount)} ${ACCOUNT_EMOJIS[t.account]||'💵'}`).join('\n')}`;
+  }
+
+  // ---- PRESUPUESTO ----
+  if (cmd === 'presupuesto') {
+    if (!Object.keys(data.budgets).length) return '📊 Sin presupuestos.\n\nEnvía: *presupuesto comida 5000*';
+    return `📊 *Presupuestos — ${MONTHS[month]}*\n\n${Object.entries(data.budgets).map(([cat,limit])=>{
+      const spent = monthTxs.filter(t=>t.type==='egreso'&&t.cat===cat).reduce((s,t)=>s+t.amount,0);
+      const pct = ((spent/limit)*100).toFixed(0);
+      return `${pct>=100?'🔴':pct>=80?'🟡':'🟢'} ${CAT_EMOJIS[cat]||'📦'} ${cat}: ${fmt(spent)}/${fmt(limit)} (${pct}%)`;
+    }).join('\n')}`;
+  }
+
+  // ---- SET BUDGET ----
+  if (cmd === 'set_budget') {
+    const cat = parsed.budget_cat;
+    const limit = parsed.budget_amount;
+    if (!cat || !limit) return '❌ Usa: *presupuesto comida 5000*';
+    data.budgets[cat] = limit;
+    await saveData(data);
+    return `✅ Presupuesto configurado:\n\n${CAT_EMOJIS[cat]||'📦'} *${cat}*: ${fmt(limit)} / mes`;
+  }
+
+  // ---- AYUDA ----
+  if (cmd === 'ayuda') {
+    return `🤖 *MisCuentas Bot*\n\n*Registrar (natural):*\nfui al colmado y gasté 350\npagué la luz 1200 con banco\ndeposité el sueldo 28000\ncompré ropa con tarjeta 800\n\n*Consultar:*\nresumen · cuentas · alertas\nhistorial · presupuesto\n\n*Configurar:*\npresupuesto comida 5000\n\n💵 Efectivo  🏦 Banco  💳 Tarjeta`;
+  }
+
+  // ---- TRANSACTION ----
+  if (parsed.type === 'ingreso' || parsed.type === 'egreso') {
+    if (!parsed.amount || parsed.amount <= 0) return `🤔 No identifiqué el monto.\n\nEjemplo: *gasté 500 en comida*`;
+
+    const account = parsed.account || 'efectivo';
+    const tx = {
+      id: Date.now(),
+      type: parsed.type,
+      amount: parsed.amount,
+      desc: parsed.desc || (parsed.type==='ingreso'?'Ingreso':'Gasto'),
+      cat: parsed.cat || 'otro',
+      account,
+      date: now.toISOString().split('T')[0],
+    };
+    data.transactions.push(tx);
+    await saveData(data);
+
+    const emoji = CAT_EMOJIS[tx.cat]||'📦';
+    const accEmoji = ACCOUNT_EMOJIS[account]||'💵';
+    const word = tx.type==='ingreso'?'Ingreso':'Egreso';
+
+    let budgetAlert = '';
+    if (tx.type==='egreso' && data.budgets[tx.cat]) {
+      const limit = data.budgets[tx.cat];
+      const total = getMonthTxs(data.transactions,month,year).filter(t=>t.type==='egreso'&&t.cat===tx.cat).reduce((s,t)=>s+t.amount,0);
+      const pct = (total/limit)*100;
+      if (pct>=100) budgetAlert=`\n\n⚠️ *Alerta:* Superaste el presupuesto de ${emoji} ${tx.cat}`;
+      else if (pct>=80) budgetAlert=`\n\n⚠️ *Aviso:* Llevas el ${pct.toFixed(0)}% de ${emoji} ${tx.cat}`;
+    }
+
+    return `✅ *${word} registrado*\n\n${tx.type==='ingreso'?'▲':'▼'} ${emoji} ${tx.desc}\n💵 ${fmt(tx.amount)}\n${accEmoji} ${account.charAt(0).toUpperCase()+account.slice(1)}\n📂 ${tx.cat}\n📅 ${tx.date}${budgetAlert}`;
+  }
+
+  return `🤔 No entendí ese mensaje.\n\nEnvía *ayuda* para ver los comandos.`;
 }
 
 // ========== ROUTES ==========
-app.get('/', (req, res) => res.send('✅ MisCuentas Bot activo'));
+app.get('/', (req, res) => res.send('✅ MisCuentas Bot v2 activo'));
 
 app.post('/webhook', async (req, res) => {
   const incomingMsg = req.body.Body || '';
@@ -253,14 +303,11 @@ app.post('/webhook', async (req, res) => {
   res.type('text/xml').send(twiml.toString());
 });
 
-// API para la app — leer datos
 app.get('/api/data', async (req, res) => {
-  const data = await loadData();
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.json(data);
+  res.json(await loadData());
 });
 
-// API para la app — guardar datos
 app.post('/api/data', async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   await saveData(req.body);
@@ -277,4 +324,4 @@ app.options('/api/data', (req, res) => {
 app.get('/health', (req, res) => res.json({ status: 'ok', time: new Date() }));
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🤖 MisCuentas Bot corriendo en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`🤖 MisCuentas Bot v2 — puerto ${PORT}`));
