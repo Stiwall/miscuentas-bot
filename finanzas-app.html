@@ -143,11 +143,12 @@
   }
   .balance-amount {
     font-family: var(--font-head);
-    font-size: 38px;
+    font-size: clamp(20px, 6vw, 32px);
     font-weight: 800;
-    letter-spacing: -1px;
-    line-height: 1;
+    letter-spacing: -0.5px;
+    line-height: 1.1;
     margin-bottom: 20px;
+    word-break: break-word;
   }
   .balance-amount.negative { color: var(--accent2); }
   .balance-row {
@@ -161,16 +162,16 @@
     padding: 12px;
   }
   .balance-mini-label {
-    font-size: 11px;
+    font-size: clamp(9px, 2.2vw, 11px);
     text-transform: uppercase;
-    letter-spacing: 1.5px;
+    letter-spacing: 1px;
     margin-bottom: 4px;
   }
   .balance-mini-label.inc { color: var(--accent); }
   .balance-mini-label.exp { color: var(--accent2); }
   .balance-mini-amount {
     font-family: var(--font-head);
-    font-size: 18px;
+    font-size: clamp(13px, 3.5vw, 17px);
     font-weight: 700;
   }
 
@@ -184,15 +185,17 @@
   }
   .section-title {
     font-family: var(--font-head);
-    font-size: 14px;
+    font-size: clamp(11px, 2.8vw, 13px);
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 1.5px;
+    letter-spacing: 1.2px;
     color: var(--text-muted);
     margin-bottom: 16px;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
   }
   .budget-item { margin-bottom: 14px; }
   .budget-item:last-child { margin-bottom: 0; }
@@ -249,9 +252,11 @@
   }
   .tx-amount {
     font-family: var(--font-head);
-    font-size: 15px;
+    font-size: clamp(12px, 3.2vw, 15px);
     font-weight: 700;
     flex-shrink: 0;
+    max-width: 110px;
+    text-align: right;
   }
   .tx-amount.inc { color: var(--accent); }
   .tx-amount.exp { color: var(--accent2); }
