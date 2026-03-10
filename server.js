@@ -1,23 +1,40 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const twilio = require('twilio');
-const fs = require('fs');
-const path = require('path');
 
 const app = express();
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(express.json());
 
-const DATA_FILE = path.join(__dirname, 'data.json');
+// ========== JSONBIN CONFIG ==========
+const JSONBIN_API_KEY = process.env.JSONBIN_API_KEY;
+const JSONBIN_BIN_ID  = process.env.JSONBIN_BIN_ID;
+const JSONBIN_URL     = `https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`;
 
 // ========== DATA HELPERS ==========
-function loadData() {
-  if (!fs.existsSync(DATA_FILE)) return { transactions: [], budgets: {} };
-  return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+async function loadData() {
+  try {
+    const res = await fetch(`${JSONBIN_URL}/latest`, {
+      headers: { 'X-Master-Key': JSONBIN_API_KEY }
+    });
+    const json = await res.json();
+    return json.record || { transactions: [], budgets: {} };
+  } catch (e) {
+    console.error('Error cargando datos:', e.message);
+    return { transactions: [], budgets: {} };
+  }
 }
 
-function saveData(data) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+async function saveData(data) {
+  try {
+    await fetch(JSONBIN_URL, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_API_KEY },
+      body: JSON.stringify(data)
+    });
+  } catch (e) {
+    console.error('Error guardando datos:', e.message);
+  }
 }
 
 function fmt(n) {
@@ -111,8 +128,8 @@ function parseMessage(msg) {
 }
 
 // ========== BOT LOGIC ==========
-function handleMessage(msgText) {
-  const data = loadData();
+async function handleMessage(msgText) {
+  const data = await loadData();
   const parsed = parseMessage(msgText);
   const now = new Date();
   const month = now.getMonth();
@@ -131,7 +148,7 @@ function handleMessage(msgText) {
         date: now.toISOString().split('T')[0],
       };
       data.transactions.push(tx);
-      saveData(data);
+      await saveData(data);
 
       const emoji = CAT_EMOJIS[parsed.cat] || '📦';
       const sign = parsed.type === 'ingreso' ? '▲' : '▼';
@@ -213,7 +230,7 @@ function handleMessage(msgText) {
       const cat = m[1].toLowerCase();
       const limit = parseFloat(m[2].replace(',', '.'));
       data.budgets[cat] = limit;
-      saveData(data);
+      await saveData(data);
       return `✅ Presupuesto configurado:\n\n${CAT_EMOJIS[cat] || '📦'} *${cat}*: ${fmt(limit)} / mes`;
     }
 
@@ -226,20 +243,37 @@ function handleMessage(msgText) {
 }
 
 // ========== ROUTES ==========
-app.get('/', (req, res) => {
-  res.send('✅ MisCuentas Bot activo');
-});
+app.get('/', (req, res) => res.send('✅ MisCuentas Bot activo'));
 
-app.post('/webhook', (req, res) => {
+app.post('/webhook', async (req, res) => {
   const incomingMsg = req.body.Body || '';
-  const reply = handleMessage(incomingMsg);
-
+  const reply = await handleMessage(incomingMsg);
   const twiml = new twilio.twiml.MessagingResponse();
   twiml.message(reply);
   res.type('text/xml').send(twiml.toString());
 });
 
-// Health check
+// API para la app — leer datos
+app.get('/api/data', async (req, res) => {
+  const data = await loadData();
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.json(data);
+});
+
+// API para la app — guardar datos
+app.post('/api/data', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  await saveData(req.body);
+  res.json({ ok: true });
+});
+
+app.options('/api/data', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.sendStatus(200);
+});
+
 app.get('/health', (req, res) => res.json({ status: 'ok', time: new Date() }));
 
 const PORT = process.env.PORT || 3000;
