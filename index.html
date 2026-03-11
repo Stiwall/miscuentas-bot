@@ -916,7 +916,7 @@
       padding:var(--space-lg) var(--space-md);
     ">
       <div id="loginTitle" style="font-family:var(--font-head);font-size:var(--fs-lg);font-weight:800;margin-bottom:4px;letter-spacing:-0.3px">Iniciar sesión</div>
-      <div id="loginSubtitle" style="color:var(--text-muted);font-size:var(--fs-sm);margin-bottom:20px">Ingresa tu número y PIN de WhatsApp</div>
+      <div id="loginSubtitle" style="color:var(--text-muted);font-size:var(--fs-sm);margin-bottom:20px">Ingresa tu Telegram ID y tu PIN</div>
 
       <div id="loginError" style="
         display:none;
@@ -926,24 +926,17 @@
         margin-bottom:14px;
       "></div>
 
-      <!-- Phone field -->
+      <!-- Telegram ID field -->
       <div id="phoneGroup" class="form-group">
-        <label class="form-label">Número de WhatsApp</label>
-        <div style="position:relative">
-          <span style="
-            position:absolute;left:13px;top:50%;transform:translateY(-50%);
-            color:var(--text-muted);font-size:var(--fs-base);font-weight:500;
-            pointer-events:none;
-          ">+1</span>
-          <input class="form-input" id="loginPhone" type="tel"
-            placeholder="809 000 0000"
-            inputmode="tel"
-            style="padding-left:36px;font-family:var(--font-num);letter-spacing:0.5px"
-            onkeydown="if(event.key==='Enter')document.getElementById('loginPin').focus()"
-          >
-        </div>
+        <label class="form-label">Telegram ID</label>
+        <input class="form-input" id="loginPhone" type="text"
+          placeholder="Ej: 123456789"
+          inputmode="numeric"
+          style="font-family:var(--font-num);letter-spacing:0.5px"
+          onkeydown="if(event.key==='Enter')document.getElementById('loginPin').focus()"
+        >
         <div style="color:var(--text-muted);font-size:var(--fs-2xs);margin-top:5px">
-          El mismo número con el que usas el bot en WhatsApp
+          Escríbele <span style="color:var(--accent);font-weight:600">/miid</span> al bot en Telegram para obtener tu ID
         </div>
       </div>
 
@@ -964,8 +957,8 @@
       <button class="submit-btn" id="loginBtn" onclick="doLogin()">Entrar</button>
 
       <div style="text-align:center;margin-top:16px;color:var(--text-muted);font-size:var(--fs-xs)">
-        ¿No tienes cuenta? Escríbele al bot por <br>
-        <span style="color:var(--accent);font-weight:600">WhatsApp primero</span> para crear tu PIN
+        ¿No tienes cuenta? Busca el bot en Telegram<br>
+        y escríbele para crear tu PIN
       </div>
     </div>
   </div>
@@ -1170,19 +1163,14 @@ function clearSession() {
 
 // ── Login / Logout ──
 async function doLogin() {
-  const phoneRaw = document.getElementById('loginPhone').value.trim().replace(/\D/g,'');
-  const pin      = document.getElementById('loginPin').value.trim();
-  const errEl    = document.getElementById('loginError');
-  const btn      = document.getElementById('loginBtn');
+  const telegramId = document.getElementById('loginPhone').value.trim().replace(/\D/g,'');
+  const pin        = document.getElementById('loginPin').value.trim();
+  const errEl      = document.getElementById('loginError');
+  const btn        = document.getElementById('loginBtn');
 
   errEl.style.display = 'none';
-  if (!phoneRaw || phoneRaw.length < 7) { showLoginError('Ingresa tu número de teléfono'); return; }
+  if (!telegramId) { showLoginError('Ingresa tu Telegram ID'); return; }
   if (!/^\d{4}$/.test(pin)) { showLoginError('El PIN debe tener exactamente 4 dígitos'); return; }
-
-  // Normalize: ensure starts with country code
-  const phone = phoneRaw.startsWith('1') && phoneRaw.length === 11 ? '+' + phoneRaw
-              : phoneRaw.length === 10 ? '+1' + phoneRaw
-              : '+' + phoneRaw;
 
   btn.textContent = 'Verificando...';
   btn.disabled = true;
@@ -1191,13 +1179,13 @@ async function doLogin() {
     const res = await fetch(`${SERVER_URL}/api/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone, pin }),
+      body: JSON.stringify({ phone: telegramId, pin }),
       signal: AbortSignal.timeout(10000)
     });
     const data = await res.json();
     if (!res.ok) {
       if (data.error === 'user_not_found') {
-        showLoginError('Número no registrado. Escríbele al bot por WhatsApp primero para crear tu cuenta.');
+        showLoginError('ID no registrado. Búscate el bot en Telegram primero y escríbele para crear tu cuenta.');
       } else if (data.error === 'invalid_pin') {
         showLoginError('PIN incorrecto. Intenta de nuevo.');
       } else {
@@ -1205,7 +1193,7 @@ async function doLogin() {
       }
       return;
     }
-    saveSession(phone, pin);
+    saveSession(telegramId, pin);
     document.getElementById('loginScreen').style.display = 'none';
     showLoading(true);
     await cloudLoad();
