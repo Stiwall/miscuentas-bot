@@ -1,28 +1,50 @@
 {
   "name": "MisCuentas RD",
   "short_name": "MisCuentas",
-  "description": "Finanzas personales para República Dominicana",
+  "description": "Finanzas personales en pesos dominicanos",
   "start_url": "/miscuentas-bot/",
   "scope": "/miscuentas-bot/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#080d1a",
   "theme_color": "#00e5a0",
-  "lang": "es",
+  "lang": "es-DO",
+  "dir": "ltr",
+  "categories": ["finance", "utilities"],
+  "iarc_rating_id": "",
+  "prefer_related_applications": false,
   "icons": [
+    { "src": "icon-72.png",   "sizes": "72x72",   "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-96.png",   "sizes": "96x96",   "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-128.png",  "sizes": "128x128", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-144.png",  "sizes": "144x144", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-152.png",  "sizes": "152x152", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-192.png",  "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-384.png",  "sizes": "384x384", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png",  "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
     {
-      "src": "icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "name": "Resumen",
+      "short_name": "Resumen",
+      "description": "Ver balance del mes",
+      "url": "/miscuentas-bot/#resumen",
+      "icons": [{ "src": "icon-96.png", "sizes": "96x96" }]
     },
     {
-      "src": "icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "name": "Nuevo movimiento",
+      "short_name": "Agregar",
+      "description": "Registrar ingreso o gasto",
+      "url": "/miscuentas-bot/#nuevo",
+      "icons": [{ "src": "icon-96.png", "sizes": "96x96" }]
     }
   ],
-  "categories": ["finance", "utilities"],
-  "screenshots": []
+  "screenshots": [
+    {
+      "src": "screenshot1.png",
+      "sizes": "720x1280",
+      "type": "image/png",
+      "label": "Pantalla principal"
+    }
+  ]
 }

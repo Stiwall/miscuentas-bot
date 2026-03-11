@@ -1799,5 +1799,14 @@ function toast(msg, type='ok') {
 // ========== START ==========
 init();
 </script>
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/miscuentas-bot/sw.js")
+      .then(() => console.log("SW registrado ✅"))
+      .catch(e => console.log("SW error:", e));
+  });
+}
+</script>
 </body>
 </html>
