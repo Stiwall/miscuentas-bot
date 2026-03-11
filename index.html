@@ -833,57 +833,6 @@
 
 <!-- LOGIN SCREEN -->
 <div id="loginScreen" style="
-  position:fixed; inset:0; z-index:1000;
-  background:var(--bg);
-  display:flex; flex-direction:column;
-  align-items:center; justify-content:center;
-  padding:24px;
-">
-  <!-- Ambient glow -->
-  <div style="position:absolute;top:-100px;left:50%;transform:translateX(-50%);width:400px;height:300px;background:radial-gradient(ellipse,#00e5a020 0%,transparent 70%);pointer-events:none;"></div>
-
-  <div style="width:100%;max-width:360px;position:relative;z-index:1;">
-    <!-- Logo -->
-    <div style="text-align:center;margin-bottom:36px;">
-      <div style="width:64px;height:64px;background:var(--accent);border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:30px;margin:0 auto 14px;box-shadow:0 0 32px var(--accent-glow);">💰</div>
-      <div style="font-family:var(--font-head);font-size:26px;font-weight:800;letter-spacing:-0.5px;">mis<span style="color:var(--accent);">cuentas</span></div>
-      <div style="font-size:13px;color:var(--text-muted);margin-top:4px;">Finanzas personales · RD</div>
-    </div>
-
-    <!-- Card -->
-    <div style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:24px;">
-      <div style="font-family:var(--font-head);font-size:17px;font-weight:700;margin-bottom:4px;">Acceder a tu cuenta</div>
-      <div style="font-size:12px;color:var(--text-muted);margin-bottom:20px;">Ingresa el número que usas en WhatsApp</div>
-
-      <div class="form-group">
-        <label class="form-label">Número de teléfono</label>
-        <div style="display:flex;gap:8px;">
-          <div style="background:var(--surface2);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:12px 13px;font-size:14px;font-weight:600;color:var(--text-secondary);white-space:nowrap;flex-shrink:0;">🇩🇴 +1</div>
-          <input class="form-input" id="loginPhone" type="tel" placeholder="809 000 0000" inputmode="tel" autocomplete="tel" style="flex:1;">
-        </div>
-      </div>
-
-      <div class="form-group">
-        <label class="form-label">PIN de 4 dígitos</label>
-        <input class="form-input" id="loginPin" type="password" placeholder="••••" maxlength="4" inputmode="numeric" autocomplete="current-password"
-          style="font-family:var(--font-num);font-size:22px;letter-spacing:6px;text-align:center;">
-      </div>
-
-      <div id="loginError" style="display:none;color:var(--accent2);font-size:12px;margin-bottom:12px;padding:10px 12px;background:var(--accent2-dim);border-radius:var(--radius-xs);border:1px solid #ff4d6d30;"></div>
-
-      <button class="submit-btn" id="loginBtn" onclick="doLogin()">Entrar →</button>
-
-      <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);text-align:center;">
-        <div style="font-size:11px;color:var(--text-muted);line-height:1.6;">
-          ¿No tienes cuenta? Escríbele al bot de WhatsApp primero para registrarte y crear tu PIN.
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- LOGIN SCREEN -->
-<div id="loginScreen" style="
   position:fixed;inset:0;z-index:1000;
   background:var(--bg);
   display:flex;flex-direction:column;
