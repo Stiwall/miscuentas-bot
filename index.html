@@ -188,10 +188,10 @@
   .nav-btn {
     flex-shrink: 0;
     background: var(--surface);
-    border: 1px solid var(--border);
+    border: 1px solid rgba(255,255,255,0.18);
     border-radius: 50px;
     padding: 6px 13px;
-    color: var(--text-muted);
+    color: rgba(255,255,255,0.85);
     font-family: var(--font-body);
     font-size: var(--fs-xs);
     font-weight: 600;
@@ -255,7 +255,7 @@
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 2px;
-    color: var(--text-muted);
+    color: rgba(255,255,255,0.85);
     margin-bottom: 4px;
   }
 
@@ -284,7 +284,7 @@
 
   .balance-mini {
     background: rgba(255,255,255,0.03);
-    border: 1px solid var(--border);
+    border: 1px solid rgba(255,255,255,0.18);
     border-radius: var(--radius-sm);
     padding: 10px 12px;
   }
@@ -315,7 +315,7 @@
   /* ── CARDS / SECTIONS ── */
   .budget-section {
     background: var(--surface);
-    border: 1px solid var(--border);
+    border: 1px solid rgba(255,255,255,0.18);
     border-radius: var(--radius);
     padding: var(--space-md);
     margin-bottom: 12px;
@@ -326,7 +326,7 @@
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 1.8px;
-    color: var(--text-muted);
+    color: rgba(255,255,255,0.85);
     margin-bottom: 14px;
     display: flex;
     justify-content: space-between;
@@ -340,7 +340,7 @@
     border: 1px solid var(--border2);
     border-radius: 50px;
     padding: 3px 10px;
-    color: var(--text-muted);
+    color: rgba(255,255,255,0.85);
     font-size: var(--fs-2xs);
     font-weight: 600;
     cursor: pointer;
@@ -375,7 +375,7 @@
     font-family: var(--font-num);
     font-size: var(--fs-xs);
     font-weight: 500;
-    color: var(--text-muted);
+    color: rgba(255,255,255,0.85);
     text-align: right;
     flex-shrink: 0;
     white-space: nowrap;
@@ -435,7 +435,7 @@
   }
   .tx-cat {
     font-size: var(--fs-xs);
-    color: var(--text-muted);
+    color: rgba(255,255,255,0.85);
     margin-top: 2px;
     white-space: nowrap;
     overflow: hidden;
@@ -462,7 +462,7 @@
   }
   .tx-amount.inc { color: var(--accent); }
   .tx-amount.exp { color: var(--accent2); }
-  .tx-date { font-size: var(--fs-2xs); color: var(--text-muted); }
+  .tx-date { font-size: var(--fs-2xs); color: rgba(255,255,255,0.85); }
 
   /* ── FAB ── */
   .fab {
@@ -548,7 +548,7 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     background: var(--surface2);
-    border: 1px solid var(--border);
+    border: 1px solid rgba(255,255,255,0.18);
     border-radius: var(--radius-sm);
     padding: 3px;
     margin-bottom: 14px;
@@ -559,7 +559,7 @@
     border: none;
     border-radius: 9px;
     background: transparent;
-    color: var(--text-muted);
+    color: rgba(255,255,255,0.85);
     font-family: var(--font-body);
     font-size: var(--fs-sm);
     font-weight: 700;
@@ -579,7 +579,7 @@
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 1.8px;
-    color: var(--text-muted);
+    color: rgba(255,255,255,0.85);
     margin-bottom: 6px;
     display: block;
   }
@@ -603,7 +603,7 @@
     border-color: var(--accent);
     box-shadow: 0 0 0 3px var(--accent-dim);
   }
-  .form-input::placeholder { color: var(--text-muted); font-weight: 400; }
+  .form-input::placeholder { color: rgba(255,255,255,0.85); font-weight: 400; }
   .form-select option { background: var(--surface2); }
 
   /* Number input — monospace for amounts */
@@ -633,7 +633,7 @@
     transition: all 0.15s;
     font-size: var(--fs-2xs);
     font-weight: 600;
-    color: var(--text-muted);
+    color: rgba(255,255,255,0.85);
     letter-spacing: 0.2px;
   }
   .cat-chip:active { transform: scale(0.94); }
@@ -655,7 +655,7 @@
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
     background: var(--surface2);
-    border: 1px solid var(--border);
+    border: 1px solid rgba(255,255,255,0.18);
     border-radius: var(--radius-sm);
     padding: 3px;
     margin-bottom: 14px;
@@ -686,7 +686,7 @@
   /* ── CHARTS ── */
   .chart-card {
     background: var(--surface);
-    border: 1px solid var(--border);
+    border: 1px solid rgba(255,255,255,0.18);
     border-radius: var(--radius);
     padding: var(--space-md);
     margin-bottom: 12px;
@@ -711,12 +711,12 @@
   .alert-card.ok     { background: var(--accent-dim);   border-color: #00e5a040; }
   .alert-icon { font-size: 22px; flex-shrink: 0; margin-top: 1px; }
   .alert-title { font-weight: 700; font-size: var(--fs-sm); margin-bottom: 3px; letter-spacing: -0.1px; }
-  .alert-msg { font-size: var(--fs-xs); color: var(--text-muted); line-height: 1.5; }
+  .alert-msg { font-size: var(--fs-xs); color: rgba(255,255,255,0.85); line-height: 1.5; }
 
   /* ── BUDGET SETUP ── */
   .budget-setup {
     background: var(--surface);
-    border: 1px solid var(--border);
+    border: 1px solid rgba(255,255,255,0.18);
     border-radius: var(--radius);
     padding: var(--space-md);
     margin-bottom: 12px;
@@ -770,7 +770,7 @@
   .empty {
     text-align: center;
     padding: 40px 20px;
-    color: var(--text-muted);
+    color: rgba(255,255,255,0.85);
   }
   .empty-icon { font-size: 44px; margin-bottom: 12px; line-height: 1; }
   .empty-title {
@@ -780,13 +780,13 @@
     color: var(--text-secondary);
     margin-bottom: 6px;
   }
-  .empty p { font-size: var(--fs-sm); color: var(--text-muted); }
+  .empty p { font-size: var(--fs-sm); color: rgba(255,255,255,0.85); }
 
   /* ── TX DELETE ── */
   .tx-delete {
     background: none;
     border: none;
-    color: var(--text-muted);
+    color: rgba(255,255,255,0.85);
     cursor: pointer;
     font-size: 13px;
     padding: 6px;
