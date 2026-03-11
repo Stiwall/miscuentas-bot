@@ -112,8 +112,27 @@ Reglas:
       })
     });
     const data = await response.json();
+    console.log('AI response type:', data.type);
+    
+    // Handle API errors
+    if (data.type === 'error' || !data.content || !data.content[0]) {
+      console.error('AI API error:', JSON.stringify(data));
+      return null;
+    }
+    
     const text = data.content[0].text.trim().replace(/```json|```/g, '').trim();
-    return JSON.parse(text);
+    console.log('AI raw text:', text.substring(0, 100));
+    
+    // Extract JSON from response
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.error('No JSON found in AI response:', text);
+      return null;
+    }
+    
+    const parsed = JSON.parse(jsonMatch[0]);
+    console.log('AI parsed:', JSON.stringify(parsed).substring(0, 100));
+    return parsed;
   } catch (e) {
     console.error('AI error:', e.message);
     return null;
