@@ -184,9 +184,11 @@ function detectAcc(text) {
 }
 
 function fallbackParse(msg) {
-  const t = msg.trim().toLowerCase().replace(/^\//, ''); // strip leading /
+  const t = msg.trim().toLowerCase().replace(/^\//, '');
+
+  // ── Commands ──
   const cmds = {
-    'resumen':'resumen','balance':'resumen','hoy':'resumen','cuanto tengo':'resumen',
+    'resumen':'resumen','balance':'resumen','hoy':'resumen','cuanto tengo':'resumen','mi balance':'resumen',
     'alertas':'alertas','alerta':'alertas',
     'ayuda':'ayuda','help':'ayuda','comandos':'ayuda','start':'ayuda',
     'ver cuentas':'ver_cuentas','cuentas':'ver_cuentas','mis cuentas':'ver_cuentas',
@@ -199,28 +201,81 @@ function fallbackParse(msg) {
   const bm = t.match(/presupuesto\s+(\w+)\s+(\d+(?:[.,]\d+)?)/);
   if (bm) return { type: 'comando', cmd: 'set_budget', budget_cat: bm[1], budget_amount: parseFloat(bm[2].replace(',', '.')) };
 
-  const incPat = t.match(/(?:ingres[eé]|recibi[oó]|gané|gane|cobré|cobre|deposité|deposite|entró|entro)\s+(\d+(?:[.,]\d+)?)\s*(.*)?/i);
-  if (incPat) {
-    const amount = parseFloat(incPat[1].replace(',', '.'));
-    const desc = incPat[2]?.trim() || 'Ingreso';
-    return { type: 'ingreso', amount, desc, cat: detectCat(desc+' '+t), account: detectAcc(t) };
+  // ── Extract amount from anywhere in the message ──
+  const amountMatch = t.match(/(\d+(?:[.,]\d+)?)/);
+  if (!amountMatch) return null;
+  const amount = parseFloat(amountMatch[1].replace(',', '.'));
+  if (!amount || amount <= 0) return null;
+
+  // ── INCOME triggers (verb anywhere in message) ──
+  const incomeVerbs = [
+    'ingresé','ingrese','ingreso',
+    'recibí','recibi','recibio','recibie',
+    'gané','gane',
+    'cobré','cobre','cobro',
+    'deposité','deposite','deposito',
+    'entró','entro',
+    'me pagaron','me pago','me depositaron',
+    'quincena','sueldo','salario','nomina','nómina',
+    'me cayó','me cayo','me entro','me entró',
+  ];
+  const hasIncomeVerb = incomeVerbs.some(v => t.includes(v));
+
+  // ── EXPENSE triggers ──
+  const expenseVerbs = [
+    'gasté','gaste','gasto',
+    'pagué','pague','pago',
+    'compré','compre','compro',
+    'desembolsé','desembolse',
+    'invertí','invertir','invierto',
+    'fui al','fui a','me costó','me costo',
+    'salí','sali','saque','saqué',
+  ];
+  const hasExpenseVerb = expenseVerbs.some(v => t.includes(v));
+
+  // ── Determine type ──
+  let type;
+  if (hasIncomeVerb && !hasExpenseVerb) {
+    type = 'ingreso';
+  } else if (hasExpenseVerb && !hasIncomeVerb) {
+    type = 'egreso';
+  } else if (hasIncomeVerb && hasExpenseVerb) {
+    // Both — expense verbs win (e.g. "gasté lo que cobré")
+    type = 'egreso';
+  } else {
+    // No verb — try pattern: number + en/de/para = expense
+    const numPat = t.match(/(\d+(?:[.,]\d+)?)\s+(?:en|de|para)\s+(.+)/i);
+    if (numPat) {
+      const desc = numPat[2].trim();
+      return { type: 'egreso', amount, desc, cat: detectCat(desc+' '+t), account: detectAcc(t) };
+    }
+    return null;
   }
 
-  const expPat = t.match(/(?:gast[eé]|pagu[eé]|compr[eé]|desembolsé|desembolse)\s+(\d+(?:[.,]\d+)?)\s*(?:en\s+|de\s+)?(.*)?/i);
-  if (expPat) {
-    const amount = parseFloat(expPat[1].replace(',', '.'));
-    const desc = expPat[2]?.trim() || 'Gasto';
-    return { type: 'egreso', amount, desc, cat: detectCat(desc+' '+t), account: detectAcc(t) };
+  // ── Build description: remove amount and verb words, keep the rest ──
+  let desc = t
+    .replace(/\d+(?:[.,]\d+)?/g, '')           // remove numbers
+    .replace(/(?:ingresé|ingrese|recibí|recibi|recibio|gané|gane|cobré|cobre|deposité|deposite|gasté|gaste|pagué|pague|compré|compre|desembolsé|desembolse|fui\s+al|fui\s+a|me\s+costó|me\s+costo|saqué|saque)/gi, '')
+    .replace(/\b(el|la|los|las|un|una|de|del|con|al|en|por|para|a|mi|mis|su|sus|lo|que|y|e|o)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!desc || desc.length < 2) {
+    // Fallback desc from known keywords
+    if (t.includes('quincena')) desc = 'Quincena';
+    else if (t.includes('sueldo')) desc = 'Sueldo';
+    else if (t.includes('salario')) desc = 'Salario';
+    else if (t.includes('colmado')) desc = 'Colmado';
+    else if (t.includes('luz')) desc = 'Luz';
+    else if (t.includes('agua')) desc = 'Agua';
+    else if (t.includes('gasolina')) desc = 'Gasolina';
+    else desc = type === 'ingreso' ? 'Ingreso' : 'Gasto';
   }
 
-  const numPat = t.match(/(\d+(?:[.,]\d+)?)\s+(?:en|de|para)\s+(.+)/i);
-  if (numPat) {
-    const amount = parseFloat(numPat[1].replace(',', '.'));
-    const desc = numPat[2].trim();
-    return { type: 'egreso', amount, desc, cat: detectCat(desc+' '+t), account: detectAcc(t) };
-  }
+  // Capitalize first letter
+  desc = desc.charAt(0).toUpperCase() + desc.slice(1);
 
-  return null;
+  return { type, amount, desc, cat: detectCat(t), account: detectAcc(t) };
 }
 
 // ========== MESSAGE HANDLER ==========
