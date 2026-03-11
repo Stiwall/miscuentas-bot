@@ -640,7 +640,7 @@
 
   <div class="budget-section">
     <div class="section-title">Últimos movimientos
-      <button onclick="showPage('movimientos', document.querySelectorAll('.nav-btn')[1])">Ver todos</button>
+      <button onclick="showPage('movimientos', document.querySelectorAll('.nav-btn')[1])">Ver todos →</button>
     </div>
     <div class="tx-list" id="recentTx"></div>
   </div>
@@ -712,17 +712,6 @@
       <span class="icon">🗑️</span> Borrar TODO (reset completo)
     </button>
   </div>
-    <div style="font-size:13px; color:var(--text-muted); line-height:1.7">
-      <p style="margin-bottom:10px">📲 <strong style="color:var(--text)">Fase 2 — Próximamente</strong></p>
-      <p>Podrás enviar mensajes como:</p>
-      <div style="background:var(--surface2);border-radius:10px;padding:14px;margin-top:10px;font-family:monospace;font-size:13px;color:var(--accent)">
-        "gasté 500 en comida"<br>
-        "ingresé 15000 salario"<br>
-        "presupuesto este mes"<br>
-        "resumen del día"
-      </div>
-      <p style="margin-top:10px">El bot registrará automáticamente tus finanzas y te enviará alertas cuando superes tu presupuesto.</p>
-    </div>
   </div>
 </div>
 
@@ -780,28 +769,37 @@ const SERVER_URL = 'https://miscuentas-bot.onrender.com';
 
 async function cloudLoad() {
   try {
-    const res = await fetch(`${SERVER_URL}/api/data`);
+    const res = await fetch(`${SERVER_URL}/api/data`, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     txs = data.transactions || [];
     budgets = data.budgets || {};
+    // Cache locally as backup
+    localStorage.setItem('txs', JSON.stringify(txs));
+    localStorage.setItem('budgets', JSON.stringify(budgets));
   } catch(e) {
-    console.warn('Sin conexión, usando datos locales', e);
+    // Offline fallback
     txs = JSON.parse(localStorage.getItem('txs') || '[]');
     budgets = JSON.parse(localStorage.getItem('budgets') || '{}');
+    if (txs.length > 0) {
+      setTimeout(() => toast('📶 Modo sin conexión', 'error'), 500);
+    }
   }
 }
 
 async function cloudSave() {
+  // Always save locally first
+  localStorage.setItem('txs', JSON.stringify(txs));
+  localStorage.setItem('budgets', JSON.stringify(budgets));
   try {
     await fetch(`${SERVER_URL}/api/data`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ transactions: txs, budgets })
+      body: JSON.stringify({ transactions: txs, budgets }),
+      signal: AbortSignal.timeout(8000)
     });
   } catch(e) {
-    // Fallback local
-    localStorage.setItem('txs', JSON.stringify(txs));
-    localStorage.setItem('budgets', JSON.stringify(budgets));
+    // Data already saved locally above
   }
 }
 
@@ -885,7 +883,10 @@ function showPage(id, btn) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('page-' + id).classList.add('active');
   btn.classList.add('active');
+  btn.scrollIntoView({ behavior:'smooth', block:'nearest', inline:'center' });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
   if (id === 'graficas') setTimeout(renderCharts, 100);
+  if (id === 'cuentas') renderCuentas();
 }
 
 // ========== MODAL ==========
@@ -936,8 +937,12 @@ async function saveTransaction() {
   const desc = document.getElementById('txDesc').value.trim();
   const amount = parseFloat(document.getElementById('txAmount').value);
   const date = document.getElementById('txDate').value;
-  if (!desc || !amount || amount <= 0 || !date || !selectedCat) {
-    alert('Por favor completa todos los campos y selecciona una categoría.');
+  if (!desc) { document.getElementById('txDesc').focus(); return; }
+  if (!amount || amount <= 0) { document.getElementById('txAmount').focus(); return; }
+  if (!date) { document.getElementById('txDate').focus(); return; }
+  if (!selectedCat) {
+    document.querySelector('.cat-grid').style.outline = '2px solid var(--accent2)';
+    setTimeout(() => document.querySelector('.cat-grid').style.outline = '', 1500);
     return;
   }
   const tx = { id: Date.now(), type: currentType, desc, amount, date, cat: selectedCat, account: selectedAccount };
@@ -961,7 +966,8 @@ function renderAll() {
   renderAllTx();
   renderBudgetPage();
   renderAlerts();
-  renderCuentas();
+  // renderCuentas only if that tab is active (performance)
+  if (document.getElementById('page-cuentas').classList.contains('active')) renderCuentas();
 }
 
 function renderCuentas() {
@@ -1138,7 +1144,7 @@ async function saveBudgets() {
   });
   await cloudSave();
   renderAll();
-  alert('✅ Presupuesto guardado');
+  toast('✅ Presupuesto guardado');
 }
 
 // ========== ALERTS ==========
@@ -1321,7 +1327,7 @@ async function resetMonth() {
   await cloudSave();
   showLoading(false);
   renderAll();
-  alert(`✅ Movimientos de ${monthName} eliminados.`);
+  toast(`✅ ${monthName} eliminado`);
 }
 
 async function resetAll() {
@@ -1333,7 +1339,28 @@ async function resetAll() {
   await cloudSave();
   showLoading(false);
   renderAll();
-  alert('✅ App reseteada completamente.');
+  toast('✅ App reseteada');
+}
+
+// ========== TOAST ==========
+function toast(msg, type='ok') {
+  let el = document.getElementById('toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'toast';
+    el.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--surface);border:1px solid var(--border);border-radius:50px;padding:10px 20px;font-size:14px;font-weight:600;z-index:9997;transition:all 0.3s;opacity:0;white-space:nowrap;pointer-events:none';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.style.borderColor = type === 'error' ? 'var(--accent2)' : 'var(--accent)';
+  el.style.color = type === 'error' ? 'var(--accent2)' : 'var(--accent)';
+  el.style.opacity = '1';
+  el.style.transform = 'translateX(-50%) translateY(0)';
+  clearTimeout(el._t);
+  el._t = setTimeout(() => {
+    el.style.opacity = '0';
+    el.style.transform = 'translateX(-50%) translateY(20px)';
+  }, 2500);
 }
 
 // ========== START ==========
