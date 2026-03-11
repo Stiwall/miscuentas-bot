@@ -1,15 +1,20 @@
 {
   "name": "miscuentas-bot",
-  "version": "3.0.0",
-  "description": "Bot WhatsApp de finanzas personales para República Dominicana",
+  "version": "5.0.0",
+  "description": "MisCuentas RD — Bot de finanzas personales para Telegram",
   "main": "server.js",
-  "engines": { "node": ">=18.0.0" },
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "body-parser": "^1.20.2",
-    "twilio": "^4.19.0"
+    "node-telegram-bot-api": "^0.66.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
   }
 }
