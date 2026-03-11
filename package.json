@@ -1,11 +1,11 @@
 {
   "name": "miscuentas-bot",
-  "version": "1.0.0",
-  "description": "Bot de WhatsApp para MisCuentas RD",
+  "version": "3.0.0",
+  "description": "Bot WhatsApp de finanzas personales para República Dominicana",
   "main": "server.js",
+  "engines": { "node": ">=18.0.0" },
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
+    "start": "node server.js"
   },
   "dependencies": {
     "express": "^4.18.2",
