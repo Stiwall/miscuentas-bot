@@ -16,12 +16,12 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <style>
   :root {
-    --bg: #080810;
-    --surface: #0f0f1a;
-    --surface2: #171724;
-    --surface3: #1e1e2e;
-    --border: #252538;
-    --border2: #2e2e45;
+    --bg: #080d1a;
+    --surface: #0d1424;
+    --surface2: #131c30;
+    --surface3: #192238;
+    --border: #1e2d4a;
+    --border2: #243455;
     --accent: #00e5a0;
     --accent-dim: #00e5a018;
     --accent-glow: #00e5a040;
@@ -831,16 +831,159 @@
 </head>
 <body>
 
+<!-- LOGIN SCREEN -->
+<div id="loginScreen" style="
+  position:fixed; inset:0; z-index:1000;
+  background:var(--bg);
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  padding:24px;
+">
+  <!-- Ambient glow -->
+  <div style="position:absolute;top:-100px;left:50%;transform:translateX(-50%);width:400px;height:300px;background:radial-gradient(ellipse,#00e5a020 0%,transparent 70%);pointer-events:none;"></div>
+
+  <div style="width:100%;max-width:360px;position:relative;z-index:1;">
+    <!-- Logo -->
+    <div style="text-align:center;margin-bottom:36px;">
+      <div style="width:64px;height:64px;background:var(--accent);border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:30px;margin:0 auto 14px;box-shadow:0 0 32px var(--accent-glow);">💰</div>
+      <div style="font-family:var(--font-head);font-size:26px;font-weight:800;letter-spacing:-0.5px;">mis<span style="color:var(--accent);">cuentas</span></div>
+      <div style="font-size:13px;color:var(--text-muted);margin-top:4px;">Finanzas personales · RD</div>
+    </div>
+
+    <!-- Card -->
+    <div style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:24px;">
+      <div style="font-family:var(--font-head);font-size:17px;font-weight:700;margin-bottom:4px;">Acceder a tu cuenta</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:20px;">Ingresa el número que usas en WhatsApp</div>
+
+      <div class="form-group">
+        <label class="form-label">Número de teléfono</label>
+        <div style="display:flex;gap:8px;">
+          <div style="background:var(--surface2);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:12px 13px;font-size:14px;font-weight:600;color:var(--text-secondary);white-space:nowrap;flex-shrink:0;">🇩🇴 +1</div>
+          <input class="form-input" id="loginPhone" type="tel" placeholder="809 000 0000" inputmode="tel" autocomplete="tel" style="flex:1;">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">PIN de 4 dígitos</label>
+        <input class="form-input" id="loginPin" type="password" placeholder="••••" maxlength="4" inputmode="numeric" autocomplete="current-password"
+          style="font-family:var(--font-num);font-size:22px;letter-spacing:6px;text-align:center;">
+      </div>
+
+      <div id="loginError" style="display:none;color:var(--accent2);font-size:12px;margin-bottom:12px;padding:10px 12px;background:var(--accent2-dim);border-radius:var(--radius-xs);border:1px solid #ff4d6d30;"></div>
+
+      <button class="submit-btn" id="loginBtn" onclick="doLogin()">Entrar →</button>
+
+      <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);text-align:center;">
+        <div style="font-size:11px;color:var(--text-muted);line-height:1.6;">
+          ¿No tienes cuenta? Escríbele al bot de WhatsApp primero para registrarte y crear tu PIN.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- LOGIN SCREEN -->
+<div id="loginScreen" style="
+  position:fixed;inset:0;z-index:1000;
+  background:var(--bg);
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  padding:var(--pad-x);
+">
+  <div style="width:100%;max-width:360px">
+    <!-- Logo -->
+    <div style="text-align:center;margin-bottom:36px">
+      <div style="
+        width:72px;height:72px;
+        background:linear-gradient(135deg,var(--accent),#00b87a);
+        border-radius:22px;
+        display:flex;align-items:center;justify-content:center;
+        font-size:32px;
+        margin:0 auto 16px;
+        box-shadow:0 0 32px var(--accent-glow);
+      ">💰</div>
+      <div style="font-family:var(--font-head);font-size:26px;font-weight:800;letter-spacing:-0.5px">
+        mis<span style="color:var(--accent)">cuentas</span>
+      </div>
+      <div style="color:var(--text-muted);font-size:var(--fs-sm);margin-top:4px">Finanzas personales RD</div>
+    </div>
+
+    <!-- Card -->
+    <div style="
+      background:var(--surface);
+      border:1px solid var(--border2);
+      border-radius:var(--radius);
+      padding:var(--space-lg) var(--space-md);
+    ">
+      <div id="loginTitle" style="font-family:var(--font-head);font-size:var(--fs-lg);font-weight:800;margin-bottom:4px;letter-spacing:-0.3px">Iniciar sesión</div>
+      <div id="loginSubtitle" style="color:var(--text-muted);font-size:var(--fs-sm);margin-bottom:20px">Ingresa tu número y PIN de WhatsApp</div>
+
+      <div id="loginError" style="
+        display:none;
+        background:var(--accent2-dim);border:1px solid #ff4d6d40;
+        border-radius:var(--radius-xs);padding:10px 12px;
+        color:var(--accent2);font-size:var(--fs-sm);font-weight:600;
+        margin-bottom:14px;
+      "></div>
+
+      <!-- Phone field -->
+      <div id="phoneGroup" class="form-group">
+        <label class="form-label">Número de WhatsApp</label>
+        <div style="position:relative">
+          <span style="
+            position:absolute;left:13px;top:50%;transform:translateY(-50%);
+            color:var(--text-muted);font-size:var(--fs-base);font-weight:500;
+            pointer-events:none;
+          ">+1</span>
+          <input class="form-input" id="loginPhone" type="tel"
+            placeholder="809 000 0000"
+            inputmode="tel"
+            style="padding-left:36px;font-family:var(--font-num);letter-spacing:0.5px"
+            onkeydown="if(event.key==='Enter')document.getElementById('loginPin').focus()"
+          >
+        </div>
+        <div style="color:var(--text-muted);font-size:var(--fs-2xs);margin-top:5px">
+          El mismo número con el que usas el bot en WhatsApp
+        </div>
+      </div>
+
+      <!-- PIN field -->
+      <div class="form-group" style="margin-bottom:20px">
+        <label class="form-label">PIN de 4 dígitos</label>
+        <input class="form-input" id="loginPin" type="password"
+          placeholder="••••"
+          maxlength="4"
+          inputmode="numeric"
+          pattern="[0-9]*"
+          autocomplete="current-password"
+          style="font-family:var(--font-num);font-size:24px;letter-spacing:8px;text-align:center"
+          onkeydown="if(event.key==='Enter')doLogin()"
+        >
+      </div>
+
+      <button class="submit-btn" id="loginBtn" onclick="doLogin()">Entrar</button>
+
+      <div style="text-align:center;margin-top:16px;color:var(--text-muted);font-size:var(--fs-xs)">
+        ¿No tienes cuenta? Escríbele al bot por <br>
+        <span style="color:var(--accent);font-weight:600">WhatsApp primero</span> para crear tu PIN
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- HEADER -->
 <div class="header">
   <div class="logo">
     <div class="logo-icon">💰</div>
     mis<span>cuentas</span>
   </div>
-  <div class="month-selector">
-    <span id="monthLabel">—</span>
-    <button class="month-btn" onclick="changeMonth(-1)">‹</button>
-    <button class="month-btn" onclick="changeMonth(1)">›</button>
+  <div style="display:flex;align-items:center;gap:8px;">
+    <div class="month-selector">
+      <span id="monthLabel">—</span>
+      <button class="month-btn" onclick="changeMonth(-1)">‹</button>
+      <button class="month-btn" onclick="changeMonth(1)">›</button>
+    </div>
+    <button onclick="doLogout()" title="Cerrar sesión" style="background:var(--surface);border:1px solid var(--border2);border-radius:50%;width:34px;height:34px;color:var(--text-muted);font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.2s;" onmouseenter="this.style.borderColor='var(--accent2)';this.style.color='var(--accent2)'" onmouseleave="this.style.borderColor='var(--border2)';this.style.color='var(--text-muted)'">⏏</button>
   </div>
 </div>
 
@@ -1003,42 +1146,147 @@
 
 <script>
 // ========== CLOUD CONFIG ==========
-// ⚠️ Reemplaza con la URL de tu servidor en Render.com
 const SERVER_URL = 'https://miscuentas-bot.onrender.com';
 
-async function cloudLoad() {
+// ── Auth state (session only) ──
+let currentUser = null; // { phone, pin }
+
+function loadSession() {
   try {
-    const res = await fetch(`${SERVER_URL}/api/data`, { signal: AbortSignal.timeout(8000) });
+    const s = sessionStorage.getItem('mcuser');
+    if (s) currentUser = JSON.parse(s);
+  } catch(e) { currentUser = null; }
+}
+
+function saveSession(phone, pin) {
+  currentUser = { phone, pin };
+  sessionStorage.setItem('mcuser', JSON.stringify(currentUser));
+}
+
+function clearSession() {
+  currentUser = null;
+  sessionStorage.removeItem('mcuser');
+}
+
+// ── Login / Logout ──
+async function doLogin() {
+  const phoneRaw = document.getElementById('loginPhone').value.trim().replace(/\D/g,'');
+  const pin      = document.getElementById('loginPin').value.trim();
+  const errEl    = document.getElementById('loginError');
+  const btn      = document.getElementById('loginBtn');
+
+  errEl.style.display = 'none';
+  if (!phoneRaw || phoneRaw.length < 7) { showLoginError('Ingresa tu número de teléfono'); return; }
+  if (!/^\d{4}$/.test(pin)) { showLoginError('El PIN debe tener exactamente 4 dígitos'); return; }
+
+  // Normalize: ensure starts with country code
+  const phone = phoneRaw.startsWith('1') && phoneRaw.length === 11 ? '+' + phoneRaw
+              : phoneRaw.length === 10 ? '+1' + phoneRaw
+              : '+' + phoneRaw;
+
+  btn.textContent = 'Verificando...';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch(`${SERVER_URL}/api/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, pin }),
+      signal: AbortSignal.timeout(10000)
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      if (data.error === 'user_not_found') {
+        showLoginError('Número no registrado. Escríbele al bot por WhatsApp primero para crear tu cuenta.');
+      } else if (data.error === 'invalid_pin') {
+        showLoginError('PIN incorrecto. Intenta de nuevo.');
+      } else {
+        showLoginError(data.error || 'Error al iniciar sesión');
+      }
+      return;
+    }
+    saveSession(phone, pin);
+    document.getElementById('loginScreen').style.display = 'none';
+    showLoading(true);
+    await cloudLoad();
+    showLoading(false);
+    renderAll();
+  } catch(e) {
+    showLoginError('No se pudo conectar al servidor. Verifica tu conexión.');
+  } finally {
+    btn.textContent = 'Entrar';
+    btn.disabled = false;
+  }
+}
+
+function showLoginError(msg) {
+  const el = document.getElementById('loginError');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+function doLogout() {
+  if (!confirm('¿Cerrar sesión?')) return;
+  clearSession();
+  txs = []; budgets = {};
+  document.getElementById('loginPin').value = '';
+  document.getElementById('loginError').style.display = 'none';
+  document.getElementById('loginScreen').style.display = 'flex';
+}
+
+// Allow Enter key on PIN input
+document.addEventListener('DOMContentLoaded', () => {
+  const pinEl = document.getElementById('loginPin');
+  if (pinEl) {
+    pinEl.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+  }
+  const phoneEl = document.getElementById('loginPhone');
+  if (phoneEl) {
+    phoneEl.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('loginPin').focus(); });
+  }
+});
+
+async function cloudLoad() {
+  if (!currentUser) return;
+  try {
+    const phone = encodeURIComponent(currentUser.phone);
+    const res = await fetch(`${SERVER_URL}/api/data/${phone}?pin=${currentUser.pin}`, {
+      signal: AbortSignal.timeout(8000)
+    });
+    if (res.status === 401) { doLogout(); return; }
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
-    txs = data.transactions || [];
-    budgets = data.budgets || {};
-    // Cache locally as backup
-    localStorage.setItem('txs', JSON.stringify(txs));
-    localStorage.setItem('budgets', JSON.stringify(budgets));
+    txs     = data.transactions || [];
+    budgets = data.budgets      || {};
+    // Local backup
+    localStorage.setItem('txs_' + currentUser.phone, JSON.stringify(txs));
+    localStorage.setItem('bgt_' + currentUser.phone, JSON.stringify(budgets));
   } catch(e) {
     // Offline fallback
-    txs = JSON.parse(localStorage.getItem('txs') || '[]');
-    budgets = JSON.parse(localStorage.getItem('budgets') || '{}');
-    if (txs.length > 0) {
-      setTimeout(() => toast('📶 Modo sin conexión', 'error'), 500);
+    if (currentUser) {
+      txs     = JSON.parse(localStorage.getItem('txs_' + currentUser.phone) || '[]');
+      budgets = JSON.parse(localStorage.getItem('bgt_' + currentUser.phone) || '{}');
+      if (txs.length > 0) setTimeout(() => toast('📶 Modo sin conexión', 'error'), 500);
     }
   }
 }
 
 async function cloudSave() {
+  if (!currentUser) return;
   // Always save locally first
-  localStorage.setItem('txs', JSON.stringify(txs));
-  localStorage.setItem('budgets', JSON.stringify(budgets));
+  localStorage.setItem('txs_' + currentUser.phone, JSON.stringify(txs));
+  localStorage.setItem('bgt_' + currentUser.phone, JSON.stringify(budgets));
   try {
-    await fetch(`${SERVER_URL}/api/data`, {
+    const phone = encodeURIComponent(currentUser.phone);
+    const pin   = encodeURIComponent(currentUser.pin);
+    await fetch(`${SERVER_URL}/api/data/${phone}?pin=${pin}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ transactions: txs, budgets }),
       signal: AbortSignal.timeout(8000)
     });
   } catch(e) {
-    // Data already saved locally above
+    // Data already saved locally
   }
 }
 
@@ -1077,10 +1325,17 @@ async function init() {
   currentYear = now.getFullYear();
   document.getElementById('txDate').value = now.toISOString().split('T')[0];
   updateMonthLabel();
-  showLoading(true);
-  await cloudLoad();
-  showLoading(false);
-  renderAll();
+
+  // Check for existing session
+  loadSession();
+  if (currentUser) {
+    document.getElementById('loginScreen').style.display = 'none';
+    showLoading(true);
+    await cloudLoad();
+    showLoading(false);
+    renderAll();
+  }
+  // Otherwise login screen stays visible
 }
 
 function showLoading(show) {
