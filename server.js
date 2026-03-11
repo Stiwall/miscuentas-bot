@@ -62,79 +62,61 @@ const ACCOUNT_EMOJIS = { efectivo:'💵', banco:'🏦', tarjeta:'💳' };
 
 // ========== AI PARSER ==========
 async function parseWithAI(message) {
-  if (!ANTHROPIC_API_KEY) return null;
+  const GEMINI_KEY = process.env.GEMINI_API_KEY;
+  if (!GEMINI_KEY) return null;
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 200,
-        messages: [{
-          role: 'user',
-          content: `Eres un asistente financiero. Analiza mensajes en español dominicano y extrae datos. Responde SOLO con JSON valido, sin texto adicional, sin markdown.
+    const prompt = `Eres un asistente financiero. Analiza mensajes en español dominicano y extrae datos. Responde SOLO con JSON valido en una sola linea, sin texto adicional, sin markdown.
 
-Mensaje del usuario: "${message}"
+Mensaje: "${message}"
 
-Responde con exactamente este formato JSON (en una sola linea):
+Formato JSON exacto:
 {"type":"ingreso o egreso o comando","amount":numero o null,"desc":"descripcion","cat":"categoria","account":"efectivo o banco o tarjeta","cmd":null,"budget_cat":null,"budget_amount":null}
 
 Categorias: comida, transporte, servicios, salud, entretenimiento, ropa, educacion, salario, negocio, inversion, prestamo, ahorro, otro
 
-Ejemplos de egreso:
+Ejemplos:
 "fui al colmado y gaste 350" = {"type":"egreso","amount":350,"desc":"Colmado","cat":"comida","account":"efectivo","cmd":null,"budget_cat":null,"budget_amount":null}
 "compre zapatos con tarjeta 2500" = {"type":"egreso","amount":2500,"desc":"Zapatos","cat":"ropa","account":"tarjeta","cmd":null,"budget_cat":null,"budget_amount":null}
 "pague la luz 1200 con banco" = {"type":"egreso","amount":1200,"desc":"Luz electrica","cat":"servicios","account":"banco","cmd":null,"budget_cat":null,"budget_amount":null}
-"gaste 500 en comida" = {"type":"egreso","amount":500,"desc":"Comida","cat":"comida","account":"efectivo","cmd":null,"budget_cat":null,"budget_amount":null}
-
-Ejemplos de ingreso:
 "deposite el sueldo 28000" = {"type":"ingreso","amount":28000,"desc":"Salario","cat":"salario","account":"banco","cmd":null,"budget_cat":null,"budget_amount":null}
-"cobre 5000 de un cliente" = {"type":"ingreso","amount":5000,"desc":"Cobro cliente","cat":"negocio","account":"efectivo","cmd":null,"budget_cat":null,"budget_amount":null}
-
-Ejemplos de comandos:
+"cobre 5000 de cliente" = {"type":"ingreso","amount":5000,"desc":"Cobro","cat":"negocio","account":"efectivo","cmd":null,"budget_cat":null,"budget_amount":null}
 "resumen" = {"type":"comando","amount":null,"desc":null,"cat":null,"account":null,"cmd":"resumen","budget_cat":null,"budget_amount":null}
 "ver cuentas" = {"type":"comando","amount":null,"desc":null,"cat":null,"account":null,"cmd":"ver_cuentas","budget_cat":null,"budget_amount":null}
 "alertas" = {"type":"comando","amount":null,"desc":null,"cat":null,"account":null,"cmd":"alertas","budget_cat":null,"budget_amount":null}
+"historial" = {"type":"comando","amount":null,"desc":null,"cat":null,"account":null,"cmd":"historial","budget_cat":null,"budget_amount":null}
 "presupuesto comida 5000" = {"type":"comando","amount":null,"desc":null,"cat":null,"account":null,"cmd":"set_budget","budget_cat":"comida","budget_amount":5000}
 "ayuda" = {"type":"comando","amount":null,"desc":null,"cat":null,"account":null,"cmd":"ayuda","budget_cat":null,"budget_amount":null}
 
-Reglas:
-- tarjeta mencionada = account: tarjeta
-- banco o transferencia o deposite = account: banco
-- sin mencion de cuenta = account: efectivo
-- verbos de gasto: compre, gaste, pague, desembolse
-- verbos de ingreso: cobre, ingrese, deposite, recibi, gane`
-        }]
+Reglas: tarjeta mencionada=account tarjeta, banco o deposite=account banco, sin mencion=account efectivo`;
+
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.1, maxOutputTokens: 200 }
       })
     });
+
     const data = await response.json();
-    console.log('AI response type:', data.type);
-    
-    // Handle API errors
-    if (data.type === 'error' || !data.content || !data.content[0]) {
-      console.error('AI API error:', JSON.stringify(data));
+    console.log('Gemini status:', response.status);
+
+    if (!data.candidates || !data.candidates[0]) {
+      console.error('Gemini error:', JSON.stringify(data));
       return null;
     }
-    
-    const text = data.content[0].text.trim().replace(/```json|```/g, '').trim();
-    console.log('AI raw text:', text.substring(0, 100));
-    
-    // Extract JSON from response
+
+    const text = data.candidates[0].content.parts[0].text.trim().replace(/```json|```/g, '').trim();
+    console.log('Gemini raw:', text.substring(0, 120));
+
     const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      console.error('No JSON found in AI response:', text);
-      return null;
-    }
-    
+    if (!jsonMatch) { console.error('No JSON in Gemini response'); return null; }
+
     const parsed = JSON.parse(jsonMatch[0]);
-    console.log('AI parsed:', JSON.stringify(parsed).substring(0, 100));
+    console.log('Gemini parsed:', JSON.stringify(parsed).substring(0, 100));
     return parsed;
   } catch (e) {
-    console.error('AI error:', e.message);
+    console.error('Gemini error:', e.message);
     return null;
   }
 }
