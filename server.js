@@ -517,10 +517,113 @@ async function handleMessage(msgText, chatId) {
   }
 }
 
+// ========== PHOTO / INVOICE PARSER ==========
+async function parseInvoicePhoto(fileId) {
+  try {
+    const fileInfo = await bot.getFile(fileId);
+    const fileUrl  = `https://api.telegram.org/file/bot${TELEGRAM_TOKEN}/${fileInfo.file_path}`;
+
+    const imgRes = await fetch(fileUrl, { signal: AbortSignal.timeout(15000) });
+    if (!imgRes.ok) throw new Error('No pude descargar la imagen');
+    const buffer = await imgRes.arrayBuffer();
+    const base64 = Buffer.from(buffer).toString('base64');
+
+    const ext  = fileInfo.file_path.split('.').pop().toLowerCase();
+    const mime = (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg' : 'image/png';
+
+    const prompt = `Eres un asistente financiero dominicano. Analiza esta factura o recibo e identifica el monto total, el negocio/servicio y la categoría. Responde SOLO JSON en una línea sin markdown: {"type":"egreso","amount":numero,"desc":"nombre negocio o servicio","cat":"categoria","account":"efectivo"} Categorías válidas: comida, transporte, servicios, salud, entretenimiento, ropa, educacion, negocio, otro. Si no puedes leer la factura responde: {"error":"no_legible"}`;
+
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [
+            { text: prompt },
+            { inline_data: { mime_type: mime, data: base64 } }
+          ]}],
+          generationConfig: { temperature: 0.1, maxOutputTokens: 200 }
+        }),
+        signal: AbortSignal.timeout(20000)
+      }
+    );
+
+    const data = await res.json();
+    if (!data.candidates?.[0]?.content?.parts?.[0]?.text) return null;
+    const text = data.candidates[0].content.parts[0].text.trim().replace(/```json|```/g, '').trim();
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    return JSON.parse(match[0]);
+  } catch (e) {
+    console.error('parseInvoicePhoto error:', e.message);
+    return null;
+  }
+}
+
 // ========== TELEGRAM LISTENER ==========
 bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
-  const text   = msg.text || '';
+
+  // ── Handle photos ──
+  if (msg.photo || msg.document?.mime_type?.startsWith('image/')) {
+    try {
+      const allData = await loadAllData();
+      const id   = String(chatId);
+      const user = getUser(allData, id);
+
+      if (!user.pin)    return await send(chatId, '❌ Primero debes crear tu PIN. Envía cualquier mensaje para empezar.');
+      if (!sessions[id]) return await send(chatId, '🔐 Debes iniciar sesión primero. Envía tu PIN de 4 dígitos:');
+
+      await send(chatId, '🔍 Analizando tu factura...');
+
+      const fileId = msg.photo ? msg.photo[msg.photo.length - 1].file_id : msg.document.file_id;
+      const parsed = await parseInvoicePhoto(fileId);
+
+      if (!parsed)                      return await send(chatId, '❌ No pude analizar la imagen. Intenta con una foto más clara.');
+      if (parsed.error === 'no_legible') return await send(chatId, '🤔 No pude leer la factura. Asegúrate de que esté bien iluminada y sea legible.');
+
+      const now   = new Date();
+      const month = now.getMonth();
+      const year  = now.getFullYear();
+
+      const tx = {
+        id: Date.now(), type: 'egreso',
+        amount:  parsed.amount,
+        desc:    parsed.desc    || 'Factura',
+        cat:     parsed.cat     || 'otro',
+        account: parsed.account || 'efectivo',
+        date:    now.toISOString().split('T')[0],
+      };
+
+      user.transactions.push(tx);
+      allData.users[id] = user;
+      await saveAllData(allData);
+
+      const emoji    = CAT_EMOJIS[tx.cat]     || '📦';
+      const accEmoji = ACC_EMOJIS[tx.account] || '💵';
+
+      let budgetAlert = '';
+      if (user.budgets[tx.cat]) {
+        const limit = user.budgets[tx.cat];
+        const total = getMonthTxs(user.transactions, month, year)
+          .filter(t => t.type === 'egreso' && t.cat === tx.cat).reduce((s, t) => s + t.amount, 0);
+        const pct = (total / limit) * 100;
+        if (pct >= 100) budgetAlert = `\n\n⚠️ *Alerta:* Superaste el presupuesto de ${emoji} ${tx.cat}`;
+        else if (pct >= 80) budgetAlert = `\n\n⚠️ *Aviso:* Llevas el ${pct.toFixed(0)}% del presupuesto de ${emoji} ${tx.cat}`;
+      }
+
+      return await send(chatId, `✅ *Factura registrada*\n\n▼ ${emoji} ${tx.desc}\n💵 ${fmt(tx.amount)}\n${accEmoji} ${tx.account.charAt(0).toUpperCase()+tx.account.slice(1)}\n📂 ${tx.cat}\n📅 ${tx.date}${budgetAlert}\n\n_Si el monto no es correcto, puedes corregirlo manualmente._`);
+
+    } catch (e) {
+      console.error('Photo handler error:', e.message);
+      try { await bot.sendMessage(chatId, '❌ Error procesando la imagen. Intenta de nuevo.'); } catch(_) {}
+    }
+    return;
+  }
+
+  // ── Handle text ──
+  const text = msg.text || '';
   if (!text) return;
   try {
     const reply = await handleMessage(text, chatId);
