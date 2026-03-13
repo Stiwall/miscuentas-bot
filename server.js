@@ -534,7 +534,7 @@ async function parseInvoicePhoto(fileId) {
     const prompt = `Eres un asistente financiero dominicano. Analiza esta factura o recibo e identifica el monto total, el negocio/servicio y la categoría. Responde SOLO JSON en una línea sin markdown: {"type":"egreso","amount":numero,"desc":"nombre negocio o servicio","cat":"categoria","account":"efectivo"} Categorías válidas: comida, transporte, servicios, salud, entretenimiento, ropa, educacion, negocio, otro. Si no puedes leer la factura responde: {"error":"no_legible"}`;
 
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_KEY}`,
+      `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
