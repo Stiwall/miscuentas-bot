@@ -550,8 +550,24 @@ async function parseInvoicePhoto(fileId) {
     );
 
     const data = await res.json();
-    if (!data.candidates?.[0]?.content?.parts?.[0]?.text) return null;
+    console.log('Gemini photo response:', JSON.stringify(data).substring(0, 400));
+    
+    // Handle safety blocks or errors
+    if (data.error) {
+      console.error('Gemini API error:', data.error.message);
+      return null;
+    }
+    if (data.candidates?.[0]?.finishReason === 'SAFETY') {
+      console.log('Gemini blocked for safety');
+      return { error: 'no_legible' };
+    }
+    if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
+      console.log('No text in response, full:', JSON.stringify(data).substring(0, 300));
+      return null;
+    }
+    
     const text = data.candidates[0].content.parts[0].text.trim().replace(/```json|```/g, '').trim();
+    console.log('Gemini photo text:', text);
     const match = text.match(/\{[\s\S]*\}/);
     if (!match) return null;
     return JSON.parse(match[0]);
