@@ -523,25 +523,20 @@ async function parseInvoicePhoto(fileId) {
     const fileInfo = await bot.getFile(fileId);
     const fileUrl  = `https://api.telegram.org/file/bot${TELEGRAM_TOKEN}/${fileInfo.file_path}`;
 
-    const imgRes = await fetch(fileUrl, { signal: AbortSignal.timeout(15000) });
-    if (!imgRes.ok) throw new Error('No pude descargar la imagen');
-    const buffer = await imgRes.arrayBuffer();
-    const base64 = Buffer.from(buffer).toString('base64');
-
     const ext  = fileInfo.file_path.split('.').pop().toLowerCase();
     const mime = (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg' : 'image/png';
 
     const prompt = `Eres un asistente financiero dominicano. Analiza esta factura o recibo e identifica el monto total, el negocio/servicio y la categoría. Responde SOLO JSON en una línea sin markdown: {"type":"egreso","amount":numero,"desc":"nombre negocio o servicio","cat":"categoria","account":"efectivo"} Categorías válidas: comida, transporte, servicios, salud, entretenimiento, ropa, educacion, negocio, otro. Si no puedes leer la factura responde: {"error":"no_legible"}`;
 
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [
             { text: prompt },
-            { inline_data: { mime_type: mime, data: base64 } }
+            { fileData: { mimeType: mime, fileUri: fileUrl } }
           ]}],
           generationConfig: { temperature: 0.1, maxOutputTokens: 200 }
         }),
