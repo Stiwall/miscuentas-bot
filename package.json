@@ -1,16 +1,25 @@
 {
-  "name": "miscuentas-bot",
-  "version": "5.0.0",
-  "description": "Bot de finanzas personales para Telegram con IA",
+  "name": "miscuentas-rd-bot",
+  "version": "2.0.0",
+  "description": "Bot de Telegram para gestión financiera personal - República Dominicana",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   },
   "dependencies": {
     "express": "^4.18.2",
     "node-telegram-bot-api": "^0.64.0"
   },
-  "engines": {
-    "node": ">=18.0.0"
-  }
+  "keywords": [
+    "telegram",
+    "bot",
+    "finance",
+    "dominican-republic"
+  ],
+  "author": "MisCuentas RD",
+  "license": "MIT"
 }
