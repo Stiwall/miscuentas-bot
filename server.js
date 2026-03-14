@@ -198,33 +198,49 @@ Ejemplos de respuesta:
 {"success":true,"amount":3500,"description":"Gasolina","category":"transporte","store":"Shell","date":"2024-01-15","items":[]}
 {"success":false,"error":"La imagen no parece ser una factura o recibo válido"}`;
 
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [
-              { text: prompt },
-              {
-                inline_data: {
-                  mime_type: mimeType,
-                  data: imageBase64
-                }
-              }
-            ]
-          }],
-          generationConfig: { temperature: 0.1, maxOutputTokens: 500 }
-        }),
-        signal: AbortSignal.timeout(30000)
-      }
-    );
+    // Probar modelos en orden hasta que uno funcione
+    const visionModels = [
+      'gemini-2.0-flash-exp',
+      'gemini-1.5-pro',
+      'gemini-1.5-flash',
+      'gemini-pro-vision',
+    ];
 
-    const data = await res.json();
-    
-    if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
-      console.log('⚠️ Gemini Vision: respuesta vacía');
+    let data = null;
+    for (const model of visionModels) {
+      try {
+        console.log(`🔄 Probando modelo: ${model}`);
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{
+                parts: [
+                  { text: prompt },
+                  { inline_data: { mime_type: mimeType, data: imageBase64 } }
+                ]
+              }],
+              generationConfig: { temperature: 0.1, maxOutputTokens: 500 }
+            }),
+            signal: AbortSignal.timeout(30000)
+          }
+        );
+        const d = await res.json();
+        if (!d.error && d.candidates?.[0]?.content?.parts?.[0]?.text) {
+          console.log(`✅ Modelo funcionó: ${model}`);
+          data = d;
+          break;
+        }
+        console.log(`⚠️ Modelo ${model} falló:`, d.error?.message || 'sin respuesta');
+      } catch(e) {
+        console.log(`⚠️ Modelo ${model} error:`, e.message);
+      }
+    }
+
+    if (!data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+      console.log('⚠️ Gemini Vision: todos los modelos fallaron');
       return null;
     }
 
