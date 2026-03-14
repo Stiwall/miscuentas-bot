@@ -167,58 +167,77 @@ function send(chatId, text) {
 
 // ========== IMAGE PROCESSING (Gemini Vision) ==========
 async function processInvoiceImage(imageBase64, mimeType = 'image/jpeg') {
-  if (!GEMINI_KEY) return null;
+  if (!GEMINI_KEY) {
+    console.log('⚠️ Gemini API no configurada, no se puede procesar imagen');
+    return null;
+  }
 
   try {
     console.log('🖼️ Procesando imagen de factura con Gemini Vision...');
+    
+    const prompt = `Analiza esta imagen de factura/recibo y extrae la información financiera.
+
+Responde SOLO con JSON en una línea, sin markdown:
+{"success":true,"amount":numero,"description":"texto","category":"categoria","store":"nombre_tienda","date":"YYYY-MM-DD","items":[{"name":"producto","price":numero}]}
+
+Categorías disponibles: comida, transporte, servicios, salud, entretenimiento, ropa, educacion, negocio, otro
+
+Si no puedes leer la factura o no es un recibo válido:
+{"success":false,"error":"mensaje de error"}
+
+Reglas:
+- amount: monto TOTAL de la factura
+- description: descripción breve del gasto (ej: "Supermercado", "Restaurante", "Gasolina")
+- category: categoría más apropiada basada en los productos
+- store: nombre del comercio si está visible
+- date: fecha de la factura si está visible, sino usa la fecha de hoy
+- items: lista de productos si son legibles
+
+Ejemplos de respuesta:
+{"success":true,"amount":1850.50,"description":"Supermercado","category":"comida","store":"La Sirena","date":"2024-01-15","items":[{"name":"Arroz","price":85},{"name":"Aceite","price":250}]}
+{"success":true,"amount":3500,"description":"Gasolina","category":"transporte","store":"Shell","date":"2024-01-15","items":[]}
+{"success":false,"error":"La imagen no parece ser una factura o recibo válido"}`;
 
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{
             parts: [
-              { text: 'What is the total amount, store name, and type of purchase in this receipt? Reply ONLY with valid JSON: {"success":true,"amount":NUMBER,"description":"STORE","category":"CATEGORY"} where category is one of: comida,transporte,servicios,salud,entretenimiento,ropa,educacion,negocio,otro. If not a receipt: {"success":false}' },
-              { inline_data: { mime_type: mimeType, data: imageBase64 } }
+              { text: prompt },
+              {
+                inline_data: {
+                  mime_type: mimeType,
+                  data: imageBase64
+                }
+              }
             ]
           }],
-          generationConfig: {
-            temperature: 0,
-            maxOutputTokens: 150,
-            response_mime_type: 'application/json'
-          }
+          generationConfig: { temperature: 0.1, maxOutputTokens: 500 }
         }),
         signal: AbortSignal.timeout(30000)
       }
     );
 
     const data = await res.json();
-    console.log('Gemini respuesta:', JSON.stringify(data).substring(0, 300));
-
-    if (data.error) {
-      console.log('Gemini error:', data.error.message);
-      return null;
-    }
-
+    
     if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
       console.log('⚠️ Gemini Vision: respuesta vacía');
       return null;
     }
 
-    const raw = data.candidates[0].content.parts[0].text.trim();
-    console.log('Gemini texto:', raw.substring(0, 200));
-
-    // Extract JSON from anywhere in the response
-    const match = raw.match(/\{[^{}]*\}/);
+    const text = data.candidates[0].content.parts[0].text.trim().replace(/```json|```/g, '').trim();
+    const match = text.match(/\{[\s\S]*\}/);
+    
     if (!match) {
-      console.log('⚠️ No JSON found in:', raw.substring(0, 100));
+      console.log('⚠️ Gemini Vision: no se encontró JSON');
       return null;
     }
 
     const parsed = JSON.parse(match[0]);
-    console.log('🧾 Parsed:', parsed);
+    console.log(`🧾 Factura procesada: success=${parsed.success}, amount=${parsed.amount || 'N/A'}`);
     return parsed;
 
   } catch (e) {
@@ -226,7 +245,6 @@ async function processInvoiceImage(imageBase64, mimeType = 'image/jpeg') {
     return null;
   }
 }
-
 
 // Obtener imagen del mensaje de Telegram
 async function getImageFromMessage(msg) {
@@ -477,99 +495,18 @@ async function handleMessage(msgText, chatId) {
       return `🪪 Tu Telegram ID es:\n\n\`${chatId}\`\n\nÚsalo para iniciar sesión en el panel web.`;
     }
 
-    // ── New user: create PIN ──
-    if (!user.pin) {
-      if (user.pending === 'awaiting_new_pin') {
-        if (!isValidPin(msg)) return '❌ El PIN debe ser exactamente *4 dígitos numéricos*.\n\nEjemplo: `1234`\n\nIngresa tu nuevo PIN:';
-        user.tempPin = msg;
-        user.pending = 'awaiting_pin_confirm';
-        await saveUser();
-        return '🔒 Confirma tu PIN ingresándolo de nuevo:';
-      }
-      if (user.pending === 'awaiting_pin_confirm') {
-        if (msg !== user.tempPin) {
-          user.pending = 'awaiting_new_pin';
-          user.tempPin = null;
-          await saveUser();
-          return '❌ Los PINs no coinciden. Inténtalo de nuevo.\n\nIngresa un PIN de *4 dígitos*:';
-        }
-        user.pin = msg;
-        user.pending = null;
-        user.tempPin = null;
-        await saveUser();
-        sessions[id] = true;
-        return `✅ *¡PIN creado exitosamente!*\n\n🎉 Bienvenido a *MisCuentas RD*\n\nYa puedes registrar tus gastos e ingresos.\n\nTu ID de Telegram es: \`${chatId}\`\nGuárdalo para el panel web.\n\nEnvía *ayuda* para ver todos los comandos.`;
-      }
-      // First message ever
-      user.pending = 'awaiting_new_pin';
-      user.tempPin = null;
-      await saveUser();
-      return `👋 ¡Bienvenido a *MisCuentas RD*!\n\nPara proteger tus datos, crea un *PIN de 4 dígitos*.\n\nEste PIN es tuyo y privado.\n\nIngresa tu PIN:`;
-    }
-
-    // ── PIN change flow ──
-    if (user.pending === 'awaiting_change_pin_new') {
-      if (!isValidPin(msg)) return '❌ El PIN debe ser exactamente *4 dígitos numéricos*.\n\nIngresa tu nuevo PIN:';
-      user.tempPin = msg;
-      user.pending = 'awaiting_change_pin_confirm';
-      await saveUser();
-      return '🔒 Confirma el nuevo PIN:';
-    }
-    if (user.pending === 'awaiting_change_pin_confirm') {
-      if (msg !== user.tempPin) {
-        user.pending = 'awaiting_change_pin_new';
-        user.tempPin = null;
-        await saveUser();
-        return '❌ Los PINs no coinciden.\n\nIngresa el nuevo PIN de nuevo:';
-      }
-      user.pin = msg;
+    // ── Auto-register new user (sin PIN) ──
+    if (!user.registered) {
+      user.registered = true;
       user.pending = null;
-      user.tempPin = null;
       await saveUser();
-      sessions[id] = true;
-      return '✅ *PIN actualizado correctamente.*';
-    }
-
-    // ── Authentication ──
-    if (!sessions[id]) {
-      const att = pinAttempts[id] || { attempts: 0 };
-      if (att.lockedUntil && new Date() < att.lockedUntil) {
-        const mins = Math.ceil((att.lockedUntil - new Date()) / 60000);
-        return `🔒 Demasiados intentos fallidos. Espera *${mins} minuto(s)*.`;
-      }
-      if (user.pending !== 'awaiting_login_pin') {
-        user.pending = 'awaiting_login_pin';
-        await saveUser();
-        return `🔐 Ingresa tu *PIN de 4 dígitos* para acceder:`;
-      }
-      if (msg === user.pin) {
-        sessions[id] = true;
-        pinAttempts[id] = { attempts: 0 };
-        user.pending = null;
-        await saveUser();
-        return `✅ *Acceso concedido*\n\n¡Hola! Estás dentro de MisCuentas RD.\n\nEnvía *ayuda* para ver los comandos.`;
-      } else {
-        att.attempts = (att.attempts || 0) + 1;
-        if (att.attempts >= MAX_ATTEMPTS) {
-          att.lockedUntil = new Date(Date.now() + 5 * 60 * 1000);
-          pinAttempts[id] = att;
-          return `🚨 *3 intentos fallidos.* Bloqueado por *5 minutos*.\n\nEscribe *resetpin* si olvidaste tu PIN.`;
-        }
-        pinAttempts[id] = att;
-        const left = MAX_ATTEMPTS - att.attempts;
-        return `❌ PIN incorrecto. Te quedan *${left} intento(s)*.\n\nIngresa tu PIN:`;
-      }
+      return `👋 ¡Bienvenido a *MisCuentas RD*!\n\n🎉 Tu cuenta fue creada automáticamente.\n\nTu ID de Telegram es: \`${chatId}\`\nGuárdalo para el panel web.\n\nEnvía *ayuda* para ver todos los comandos.`;
     }
 
     // ── Authenticated commands ──
     const t = msg.toLowerCase().trim();
     
-    if (t === 'resetpin' || t === '/resetpin') {
-      user.pending = 'awaiting_change_pin_new';
-      user.tempPin = null;
-      await saveUser();
-      return `🔑 *Cambiar PIN*\n\nIngresa tu nuevo PIN de *4 dígitos*:`;
-    }
+
 
     const monthTxs = getMonthTxs(user.transactions, month, year);
     let parsed = await parseWithAI(msg) || fallbackParse(msg);
@@ -772,13 +709,7 @@ async function handleImageMessage(msg, chatId) {
     const user = getUser(allData, id);
 
     // Si no está autenticado, pedir PIN
-    if (!user.pin) {
-      return `👋 ¡Bienvenido a *MisCuentas RD*!\n\nPara proteger tus datos, crea un *PIN de 4 dígitos*.\n\nIngresa tu PIN:`;
-    }
-
-    if (!sessions[id]) {
-      return `🔐 Ingresa tu *PIN de 4 dígitos* para acceder:`;
-    }
+    // No PIN required
 
     // Verificar que Gemini está configurado
     if (!GEMINI_KEY) {
