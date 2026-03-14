@@ -2,11 +2,11 @@
  * MisCuentas RD - Telegram Bot Server
  * Optimizado para Render.com
  * 
- * Correcciones principales:
- * 1. Agregado servidor HTTP con health check (requerido por Render)
+ * Características:
+ * 1. Servidor HTTP con health check (requerido por Render)
  * 2. Validación completa de variables de entorno
  * 3. Manejo robusto de errores
- * 4. Código completo (estaba incompleto)
+ * 4. Procesamiento de imágenes de facturas con Gemini Vision
  * 5. Logging mejorado para debugging
  */
 
@@ -50,8 +50,8 @@ const sessions = {};      // { chatId: true }
 const pinAttempts = {};   // { chatId: { attempts, lockedUntil } }
 const MAX_ATTEMPTS = 3;
 
-// Lock para evitar race conditions en JSONBin
-let dataLock = Promise.resolve();
+// Almacenamiento temporal de transacciones pendientes de confirmación
+const pendingTransactions = {}; // { chatId: transactionData }
 
 // ========== JSONBIN DATA ==========
 async function loadAllData() {
@@ -105,21 +105,8 @@ async function saveAllData(data) {
     
   } catch (e) {
     console.error('❌ saveAllData error:', e.message);
-    throw e; // Re-throw para manejar en el caller
+    throw e;
   }
-}
-
-// Operación atómica con lock
-async function withDataLock(operation) {
-  return dataLock = dataLock.then(async () => {
-    const data = await loadAllData();
-    const result = await operation(data);
-    await saveAllData(data);
-    return result;
-  }).catch(err => {
-    console.error('❌ Error en operación atómica:', err.message);
-    throw err;
-  });
 }
 
 function getUser(allData, id) {
@@ -178,6 +165,118 @@ function send(chatId, text) {
   return bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
 }
 
+// ========== IMAGE PROCESSING (Gemini Vision) ==========
+async function processInvoiceImage(imageBase64, mimeType = 'image/jpeg') {
+  if (!GEMINI_KEY) {
+    console.log('⚠️ Gemini API no configurada, no se puede procesar imagen');
+    return null;
+  }
+
+  try {
+    console.log('🖼️ Procesando imagen de factura con Gemini Vision...');
+    
+    const prompt = `Analiza esta imagen de factura/recibo y extrae la información financiera.
+
+Responde SOLO con JSON en una línea, sin markdown:
+{"success":true,"amount":numero,"description":"texto","category":"categoria","store":"nombre_tienda","date":"YYYY-MM-DD","items":[{"name":"producto","price":numero}]}
+
+Categorías disponibles: comida, transporte, servicios, salud, entretenimiento, ropa, educacion, negocio, otro
+
+Si no puedes leer la factura o no es un recibo válido:
+{"success":false,"error":"mensaje de error"}
+
+Reglas:
+- amount: monto TOTAL de la factura
+- description: descripción breve del gasto (ej: "Supermercado", "Restaurante", "Gasolina")
+- category: categoría más apropiada basada en los productos
+- store: nombre del comercio si está visible
+- date: fecha de la factura si está visible, sino usa la fecha de hoy
+- items: lista de productos si son legibles
+
+Ejemplos de respuesta:
+{"success":true,"amount":1850.50,"description":"Supermercado","category":"comida","store":"La Sirena","date":"2024-01-15","items":[{"name":"Arroz","price":85},{"name":"Aceite","price":250}]}
+{"success":true,"amount":3500,"description":"Gasolina","category":"transporte","store":"Shell","date":"2024-01-15","items":[]}
+{"success":false,"error":"La imagen no parece ser una factura o recibo válido"}`;
+
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { text: prompt },
+              {
+                inline_data: {
+                  mime_type: mimeType,
+                  data: imageBase64
+                }
+              }
+            ]
+          }],
+          generationConfig: { temperature: 0.1, maxOutputTokens: 500 }
+        }),
+        signal: AbortSignal.timeout(30000)
+      }
+    );
+
+    const data = await res.json();
+    
+    if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
+      console.log('⚠️ Gemini Vision: respuesta vacía');
+      return null;
+    }
+
+    const text = data.candidates[0].content.parts[0].text.trim().replace(/```json|```/g, '').trim();
+    const match = text.match(/\{[\s\S]*\}/);
+    
+    if (!match) {
+      console.log('⚠️ Gemini Vision: no se encontró JSON');
+      return null;
+    }
+
+    const parsed = JSON.parse(match[0]);
+    console.log(`🧾 Factura procesada: success=${parsed.success}, amount=${parsed.amount || 'N/A'}`);
+    return parsed;
+
+  } catch (e) {
+    console.error('❌ Error procesando imagen:', e.message);
+    return null;
+  }
+}
+
+// Obtener imagen del mensaje de Telegram
+async function getImageFromMessage(msg) {
+  try {
+    // Si hay foto en el mensaje
+    if (msg.photo && msg.photo.length > 0) {
+      // Obtener la foto de mayor resolución (la última)
+      const photo = msg.photo[msg.photo.length - 1];
+      console.log(`📷 Foto recibida: file_id=${photo.file_id.substring(0, 20)}...`);
+      
+      // Obtener el archivo de Telegram
+      const fileLink = await bot.getFileLink(photo.file_id);
+      console.log(`📥 Descargando imagen: ${fileLink.substring(0, 50)}...`);
+      
+      // Descargar la imagen
+      const imageRes = await fetch(fileLink);
+      const buffer = await imageRes.arrayBuffer();
+      const base64 = Buffer.from(buffer).toString('base64');
+      
+      // Detectar tipo MIME
+      const mimeType = fileLink.endsWith('.png') ? 'image/png' : 'image/jpeg';
+      
+      return { base64, mimeType };
+    }
+    
+    return null;
+  } catch (e) {
+    console.error('❌ Error obteniendo imagen:', e.message);
+    return null;
+  }
+}
+
 // ========== AI PARSER (Gemini) ==========
 async function parseWithAI(message) {
   if (!GEMINI_KEY) return null;
@@ -203,6 +302,8 @@ Ejemplos:
 "presupuesto comida 5000" = {"type":"comando","amount":null,"desc":null,"cat":null,"account":null,"cmd":"set_budget","budget_cat":"comida","budget_amount":5000}
 "ayuda" = {"type":"comando","amount":null,"desc":null,"cat":null,"account":null,"cmd":"ayuda","budget_cat":null,"budget_amount":null}
 "cambiar pin" = {"type":"comando","amount":null,"desc":null,"cat":null,"account":null,"cmd":"cambiar_pin","budget_cat":null,"budget_amount":null}
+"si" = {"type":"comando","amount":null,"desc":null,"cat":null,"account":null,"cmd":"confirmar","budget_cat":null,"budget_amount":null}
+"no" = {"type":"comando","amount":null,"desc":null,"cat":null,"account":null,"cmd":"cancelar","budget_cat":null,"budget_amount":null}
 
 Reglas: tarjeta=account tarjeta, banco/deposite=account banco, sin mencion=account efectivo`;
 
@@ -292,6 +393,8 @@ function fallbackParse(msg) {
     'presupuesto': 'presupuesto', 'historial': 'historial', 'lista': 'historial',
     'cambiar pin': 'cambiar_pin', 'cambiarpin': 'cambiar_pin', 'nuevo pin': 'cambiar_pin',
     'miid': 'miid',
+    'si': 'confirmar', 'sí': 'confirmar', 'confirmar': 'confirmar',
+    'no': 'cancelar', 'cancelar': 'cancelar',
   };
   
   if (cmds[t]) return { type: 'comando', cmd: cmds[t] };
@@ -500,8 +603,33 @@ async function handleMessage(msgText, chatId) {
       return `🪪 Tu Telegram ID es:\n\n\`${chatId}\``;
     }
 
+    // ── CONFIRMAR TRANSACCIÓN PENDIENTE ──
+    if (parsed?.cmd === 'confirmar') {
+      const pending = pendingTransactions[id];
+      if (pending) {
+        user.transactions.push(pending);
+        await saveUser();
+        delete pendingTransactions[id];
+        
+        const catEmoji = CAT_EMOJIS[pending.cat] || '📦';
+        const accEmoji = ACC_EMOJIS[pending.account] || '💵';
+        
+        return `✅ *Gasto registrado*\n\n${catEmoji} ${pending.desc}\n💰 ${fmt(pending.amount)}\n${accEmoji} ${pending.account}`;
+      }
+      return '❌ No hay transacción pendiente para confirmar.';
+    }
+
+    // ── CANCELAR TRANSACCIÓN PENDIENTE ──
+    if (parsed?.cmd === 'cancelar') {
+      if (pendingTransactions[id]) {
+        delete pendingTransactions[id];
+        return '❌ Transacción cancelada.';
+      }
+      return '❌ No hay transacción pendiente para cancelar.';
+    }
+
     if (!parsed) {
-      return `🤔 No entendí ese mensaje.\n\nEnvía *ayuda* para ver los comandos.\n\nEjemplos:\n• fui al colmado y gasté 350\n• pagué la luz 1200 con banco\n• deposité el sueldo 28000`;
+      return `🤔 No entendí ese mensaje.\n\nEnvía *ayuda* para ver los comandos.\n\nEjemplos:\n• fui al colmado y gasté 350\n• pagué la luz 1200 con banco\n• deposité el sueldo 28000\n• 📷 Envía una foto de factura para registrarla automáticamente`;
     }
 
     const cmd = parsed.cmd;
@@ -600,6 +728,10 @@ async function handleMessage(msgText, chatId) {
 • pagué la luz 1200 con banco
 • deposité el sueldo 28000
 
+📷 *Facturas:*
+• Envía una foto de factura
+• El bot la analiza y registra
+
 📊 *Presupuestos:*
 • presupuesto comida 5000
 • presupuesto transporte 2000
@@ -641,23 +773,140 @@ async function handleMessage(msgText, chatId) {
 
   } catch (error) {
     console.error('❌ Error en handleMessage:', error);
-    return `❌ Ocurrió un error. Intenta de nuevo.\n\nSi persiste, contacta al soporte.`;
+    return `❌ Ocurrió un error. Intenta de nuevo.\n\nSi persista, contacta al soporte.`;
+  }
+}
+
+// ========== IMAGE MESSAGE HANDLER ==========
+async function handleImageMessage(msg, chatId) {
+  const id = String(chatId);
+  const now = new Date();
+
+  console.log(`📷 [${chatId}] Imagen recibida`);
+
+  try {
+    // Verificar autenticación primero
+    const allData = await loadAllData();
+    const user = getUser(allData, id);
+
+    // Si no está autenticado, pedir PIN
+    if (!user.pin) {
+      return `👋 ¡Bienvenido a *MisCuentas RD*!\n\nPara proteger tus datos, crea un *PIN de 4 dígitos*.\n\nIngresa tu PIN:`;
+    }
+
+    if (!sessions[id]) {
+      return `🔐 Ingresa tu *PIN de 4 dígitos* para acceder:`;
+    }
+
+    // Verificar que Gemini está configurado
+    if (!GEMINI_KEY) {
+      return `❌ El procesamiento de facturas requiere configurar *GEMINI_API_KEY*.\n\nContacta al administrador.`;
+    }
+
+    // Obtener imagen
+    const imageData = await getImageFromMessage(msg);
+    if (!imageData) {
+      return `❌ No pude obtener la imagen. Intenta de nuevo.`;
+    }
+
+    // Enviar mensaje de procesando
+    await send(chatId, '🔄 *Analizando factura...*');
+
+    // Procesar con Gemini Vision
+    const result = await processInvoiceImage(imageData.base64, imageData.mimeType);
+
+    if (!result) {
+      return `❌ Error al procesar la imagen. Intenta con otra foto más clara.`;
+    }
+
+    if (!result.success) {
+      return `❌ ${result.error || 'No pude leer la factura'}\n\nAsegúrate de que la imagen sea clara y muestre un recibo o factura válido.`;
+    }
+
+    // Crear transacción pendiente
+    const tx = {
+      type: 'egreso',
+      amount: result.amount,
+      desc: result.description || result.store || 'Factura',
+      cat: result.category || 'otro',
+      account: 'efectivo', // Default, usuario puede cambiar después
+      date: result.date || now.toISOString().split('T')[0],
+      timestamp: now.toISOString(),
+      store: result.store || null,
+      items: result.items || []
+    };
+
+    // Guardar como pendiente
+    pendingTransactions[id] = tx;
+
+    // Construir mensaje de confirmación
+    let message = `🧾 *Factura detectada*\n\n`;
+    message += `📍 *Comercio:* ${tx.store || tx.desc}\n`;
+    message += `💰 *Monto:* ${fmt(tx.amount)}\n`;
+    message += `📦 *Categoría:* ${CAT_EMOJIS[tx.cat] || '📦'} ${tx.cat}\n`;
+    
+    if (tx.items && tx.items.length > 0) {
+      message += `\n*Productos:*\n`;
+      tx.items.slice(0, 5).forEach(item => {
+        message += `• ${item.name}: ${fmt(item.price)}\n`;
+      });
+      if (tx.items.length > 5) {
+        message += `• _...y ${tx.items.length - 5} más_\n`;
+      }
+    }
+
+    message += `\n✅ Responde *si* para confirmar\n❌ Responde *no* para cancelar`;
+    message += `\n\n💡 Para cambiar la cuenta, escribe: *si tarjeta* o *si banco*`;
+
+    return message;
+
+  } catch (error) {
+    console.error('❌ Error en handleImageMessage:', error);
+    return `❌ Error procesando la imagen. Intenta de nuevo.`;
   }
 }
 
 // ========== TELEGRAM BOT EVENTS ==========
+// Manejar mensajes de texto
 bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
   const text = msg.text;
   
-  if (!text) return;
+  // Si tiene foto, procesar como imagen
+  if (msg.photo && msg.photo.length > 0) {
+    try {
+      // Si también tiene caption, procesar el caption después
+      const response = await handleImageMessage(msg, chatId);
+      await send(chatId, response);
+      
+      // Si hay caption, procesarlo como comando adicional
+      if (msg.caption) {
+        // Esperar un poco antes de procesar el caption
+        setTimeout(async () => {
+          try {
+            const captionResponse = await handleMessage(msg.caption, chatId);
+            await send(chatId, captionResponse);
+          } catch (e) {
+            console.error('Error procesando caption:', e);
+          }
+        }, 1000);
+      }
+    } catch (error) {
+      console.error('❌ Error procesando imagen:', error);
+      await send(chatId, '❌ Error procesando la imagen. Intenta de nuevo.');
+    }
+    return;
+  }
   
-  try {
-    const response = await handleMessage(text, chatId);
-    await send(chatId, response);
-  } catch (error) {
-    console.error('❌ Error procesando mensaje:', error);
-    await send(chatId, '❌ Error procesando tu mensaje. Intenta de nuevo.');
+  // Mensaje de texto normal
+  if (text) {
+    try {
+      const response = await handleMessage(text, chatId);
+      await send(chatId, response);
+    } catch (error) {
+      console.error('❌ Error procesando mensaje:', error);
+      await send(chatId, '❌ Error procesando tu mensaje. Intenta de nuevo.');
+    }
   }
 });
 
@@ -669,7 +918,8 @@ app.get('/', (req, res) => {
   res.json({ 
     status: 'ok', 
     service: 'MisCuentas RD Bot',
-    version: '2.0.0',
+    version: '2.1.0',
+    features: ['text_processing', 'image_processing'],
     uptime: Math.floor(process.uptime()),
     timestamp: new Date().toISOString()
   });
@@ -678,7 +928,8 @@ app.get('/', (req, res) => {
 app.get('/health', (req, res) => {
   res.status(200).json({ 
     status: 'healthy',
-    telegram: bot.polling ? 'active' : 'inactive'
+    telegram: bot.polling ? 'active' : 'inactive',
+    gemini: !!GEMINI_KEY
   });
 });
 
@@ -699,6 +950,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ MisCuentas RD Bot iniciado`);
   console.log(`🌐 Puerto: ${PORT}`);
   console.log(`🤖 Telegram: Conectado`);
+  console.log(`🧾 Procesamiento de facturas: ${GEMINI_KEY ? 'Activo' : 'Inactivo (falta GEMINI_API_KEY)'}`);
   console.log(`========================================\n`);
 });
 
