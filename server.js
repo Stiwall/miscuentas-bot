@@ -198,12 +198,12 @@ Ejemplos de respuesta:
 {"success":true,"amount":3500,"description":"Gasolina","category":"transporte","store":"Shell","date":"2024-01-15","items":[]}
 {"success":false,"error":"La imagen no parece ser una factura o recibo válido"}`;
 
-    // Probar modelos en orden hasta que uno funcione
+    // Modelos disponibles en la cuenta (en orden de preferencia)
     const visionModels = [
-      'gemini-2.0-flash-exp',
-      'gemini-1.5-pro',
-      'gemini-1.5-flash',
-      'gemini-pro-vision',
+      'gemini-2.0-flash',
+      'gemini-2.0-flash-001',
+      'gemini-2.5-flash',
+      'gemini-2.0-flash-lite',
     ];
 
     let data = null;
@@ -233,9 +233,9 @@ Ejemplos de respuesta:
           data = d;
           break;
         }
-        console.log(`⚠️ Modelo ${model} falló:`, d.error?.message || 'sin respuesta');
+        console.log(`⚠️ ${model} falló:`, d.error?.message?.substring(0, 80) || 'sin respuesta');
       } catch(e) {
-        console.log(`⚠️ Modelo ${model} error:`, e.message);
+        console.log(`⚠️ ${model} error:`, e.message);
       }
     }
 
