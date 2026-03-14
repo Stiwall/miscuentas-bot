@@ -167,19 +167,10 @@ function send(chatId, text) {
 
 // ========== IMAGE PROCESSING (Gemini Vision) ==========
 async function processInvoiceImage(imageBase64, mimeType = 'image/jpeg') {
-  if (!GEMINI_KEY) {
-    console.log('⚠️ Gemini API no configurada, no se puede procesar imagen');
-    return null;
-  }
+  if (!GEMINI_KEY) return null;
 
   try {
     console.log('🖼️ Procesando imagen de factura con Gemini Vision...');
-    
-
-    const prompt = `Receipt image. ONE LINE JSON only, no other text:
-{"s":true,"a":AMOUNT,"d":"STORE","c":"CATEGORY"}
-CATEGORY: comida,transporte,servicios,salud,entretenimiento,ropa,educacion,negocio,otro
-Unreadable: {"s":false}`;
 
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,
@@ -189,42 +180,45 @@ Unreadable: {"s":false}`;
         body: JSON.stringify({
           contents: [{
             parts: [
-              { text: prompt },
+              { text: 'What is the total amount, store name, and type of purchase in this receipt? Reply ONLY with valid JSON: {"success":true,"amount":NUMBER,"description":"STORE","category":"CATEGORY"} where category is one of: comida,transporte,servicios,salud,entretenimiento,ropa,educacion,negocio,otro. If not a receipt: {"success":false}' },
               { inline_data: { mime_type: mimeType, data: imageBase64 } }
             ]
           }],
-          generationConfig: { temperature: 0, maxOutputTokens: 100 }
+          generationConfig: {
+            temperature: 0,
+            maxOutputTokens: 150,
+            response_mime_type: 'application/json'
+          }
         }),
         signal: AbortSignal.timeout(30000)
       }
     );
 
     const data = await res.json();
-    
+    console.log('Gemini respuesta:', JSON.stringify(data).substring(0, 300));
+
+    if (data.error) {
+      console.log('Gemini error:', data.error.message);
+      return null;
+    }
+
     if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
       console.log('⚠️ Gemini Vision: respuesta vacía');
       return null;
     }
 
-    const text = data.candidates[0].content.parts[0].text.trim().replace(/```json|```/g, '').trim();
-    const match = text.match(/\{[\s\S]*\}/);
-    
+    const raw = data.candidates[0].content.parts[0].text.trim();
+    console.log('Gemini texto:', raw.substring(0, 200));
+
+    // Extract JSON from anywhere in the response
+    const match = raw.match(/\{[^{}]*\}/);
     if (!match) {
-      console.log('⚠️ Gemini Vision: no se encontró JSON');
+      console.log('⚠️ No JSON found in:', raw.substring(0, 100));
       return null;
     }
 
-    const raw = JSON.parse(match[0]);
-    // Normalize short keys to full keys
-    const parsed = {
-      success: raw.success !== undefined ? raw.success : raw.s,
-      amount:  raw.amount  !== undefined ? raw.amount  : raw.a,
-      description: raw.description || raw.d || raw.store || 'Factura',
-      category: raw.category || raw.c || 'otro',
-      store: raw.store || raw.d || null,
-      error: raw.error
-    };
-    console.log(`🧾 Factura: success=${parsed.success}, amount=${parsed.amount}`);
+    const parsed = JSON.parse(match[0]);
+    console.log('🧾 Parsed:', parsed);
     return parsed;
 
   } catch (e) {
@@ -232,6 +226,7 @@ Unreadable: {"s":false}`;
     return null;
   }
 }
+
 
 // Obtener imagen del mensaje de Telegram
 async function getImageFromMessage(msg) {
