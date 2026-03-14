@@ -175,31 +175,14 @@ async function processInvoiceImage(imageBase64, mimeType = 'image/jpeg') {
   try {
     console.log('🖼️ Procesando imagen de factura con Gemini Vision...');
     
-    const prompt = `Analiza esta imagen de factura/recibo y extrae la información financiera.
 
-Responde SOLO con JSON en una línea, sin markdown:
-{"success":true,"amount":numero,"description":"texto","category":"categoria","store":"nombre_tienda","date":"YYYY-MM-DD","items":[{"name":"producto","price":numero}]}
-
-Categorías disponibles: comida, transporte, servicios, salud, entretenimiento, ropa, educacion, negocio, otro
-
-Si no puedes leer la factura o no es un recibo válido:
-{"success":false,"error":"mensaje de error"}
-
-Reglas:
-- amount: monto TOTAL de la factura
-- description: descripción breve del gasto (ej: "Supermercado", "Restaurante", "Gasolina")
-- category: categoría más apropiada basada en los productos
-- store: nombre del comercio si está visible
-- date: fecha de la factura si está visible, sino usa la fecha de hoy
-- items: lista de productos si son legibles
-
-Ejemplos de respuesta:
-{"success":true,"amount":1850.50,"description":"Supermercado","category":"comida","store":"La Sirena","date":"2024-01-15","items":[{"name":"Arroz","price":85},{"name":"Aceite","price":250}]}
-{"success":true,"amount":3500,"description":"Gasolina","category":"transporte","store":"Shell","date":"2024-01-15","items":[]}
-{"success":false,"error":"La imagen no parece ser una factura o recibo válido"}`;
+    const prompt = `Receipt image. ONE LINE JSON only, no other text:
+{"s":true,"a":AMOUNT,"d":"STORE","c":"CATEGORY"}
+CATEGORY: comida,transporte,servicios,salud,entretenimiento,ropa,educacion,negocio,otro
+Unreadable: {"s":false}`;
 
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -207,15 +190,10 @@ Ejemplos de respuesta:
           contents: [{
             parts: [
               { text: prompt },
-              {
-                inline_data: {
-                  mime_type: mimeType,
-                  data: imageBase64
-                }
-              }
+              { inline_data: { mime_type: mimeType, data: imageBase64 } }
             ]
           }],
-          generationConfig: { temperature: 0.1, maxOutputTokens: 500 }
+          generationConfig: { temperature: 0, maxOutputTokens: 100 }
         }),
         signal: AbortSignal.timeout(30000)
       }
@@ -228,24 +206,26 @@ Ejemplos de respuesta:
       return null;
     }
 
-    const raw = data.candidates[0].content.parts[0].text.trim();
-    console.log('Gemini raw:', raw.substring(0, 200));
+    const text = data.candidates[0].content.parts[0].text.trim().replace(/```json|```/g, '').trim();
+    const match = text.match(/\{[\s\S]*\}/);
     
-    // Buscar JSON en cualquier parte del texto
-    const jsonMatch = raw.match(/\{[^]*?\}/);
-    if (!jsonMatch) {
-      console.log('⚠️ No se encontró JSON en:', raw.substring(0, 100));
+    if (!match) {
+      console.log('⚠️ Gemini Vision: no se encontró JSON');
       return null;
     }
-    
-    try {
-      const parsed = JSON.parse(jsonMatch[0]);
-      console.log('🧾 Factura:', parsed.amount, parsed.description);
-      return parsed;
-    } catch(e) {
-      console.log('⚠️ JSON inválido:', jsonMatch[0].substring(0, 100));
-      return null;
-    }
+
+    const raw = JSON.parse(match[0]);
+    // Normalize short keys to full keys
+    const parsed = {
+      success: raw.success !== undefined ? raw.success : raw.s,
+      amount:  raw.amount  !== undefined ? raw.amount  : raw.a,
+      description: raw.description || raw.d || raw.store || 'Factura',
+      category: raw.category || raw.c || 'otro',
+      store: raw.store || raw.d || null,
+      error: raw.error
+    };
+    console.log(`🧾 Factura: success=${parsed.success}, amount=${parsed.amount}`);
+    return parsed;
 
   } catch (e) {
     console.error('❌ Error procesando imagen:', e.message);
