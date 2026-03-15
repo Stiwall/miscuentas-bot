@@ -20,7 +20,6 @@ app.use(express.json());
 const JSONBIN_API_KEY = process.env.JSONBIN_API_KEY;
 const JSONBIN_BIN_ID = process.env.JSONBIN_BIN_ID;
 const GEMINI_KEY = process.env.GEMINI_API_KEY;
-const GROQ_KEY   = process.env.GROQ_API_KEY;
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
 // Validar TODAS las variables críticas
@@ -166,67 +165,79 @@ function send(chatId, text) {
   return bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
 }
 
-// ========== IMAGE PROCESSING (Groq Vision) ==========
+// ========== IMAGE PROCESSING (Gemini Vision) ==========
 async function processInvoiceImage(imageBase64, mimeType = 'image/jpeg') {
-  if (!GROQ_KEY) {
-    console.log('⚠️ GROQ_API_KEY no configurada');
+  if (!GEMINI_KEY) {
+    console.log('⚠️ Gemini API no configurada, no se puede procesar imagen');
     return null;
   }
 
   try {
-    console.log('🖼️ Procesando imagen con Groq Vision...');
+    console.log('🖼️ Procesando imagen de factura con Gemini Vision...');
+    
+    const prompt = `Analiza esta imagen de factura/recibo y extrae la información financiera.
 
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${GROQ_KEY}`
-      },
-      body: JSON.stringify({
-        model: 'meta-llama/llama-4-scout-17b-16e-instruct',
-        messages: [{
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text: 'Analyze this receipt/invoice image. Reply ONLY with this JSON, no other text: {"success":true,"amount":TOTAL_NUMBER,"description":"STORE_NAME","category":"CATEGORY"} where CATEGORY is one of: comida,transporte,servicios,salud,entretenimiento,ropa,educacion,negocio,otro. If not a receipt reply: {"success":false}'
-            },
-            {
-              type: 'image_url',
-              image_url: { url: `data:${mimeType};base64,${imageBase64}` }
-            }
-          ]
-        }],
-        temperature: 0,
-        max_tokens: 150
-      }),
-      signal: AbortSignal.timeout(30000)
-    });
+Responde SOLO con JSON en una línea, sin markdown:
+{"success":true,"amount":numero,"description":"texto","category":"categoria","store":"nombre_tienda","date":"YYYY-MM-DD","items":[{"name":"producto","price":numero}]}
+
+Categorías disponibles: comida, transporte, servicios, salud, entretenimiento, ropa, educacion, negocio, otro
+
+Si no puedes leer la factura o no es un recibo válido:
+{"success":false,"error":"mensaje de error"}
+
+Reglas:
+- amount: monto TOTAL de la factura
+- description: descripción breve del gasto (ej: "Supermercado", "Restaurante", "Gasolina")
+- category: categoría más apropiada basada en los productos
+- store: nombre del comercio si está visible
+- date: fecha de la factura si está visible, sino usa la fecha de hoy
+- items: lista de productos si son legibles
+
+Ejemplos de respuesta:
+{"success":true,"amount":1850.50,"description":"Supermercado","category":"comida","store":"La Sirena","date":"2024-01-15","items":[{"name":"Arroz","price":85},{"name":"Aceite","price":250}]}
+{"success":true,"amount":3500,"description":"Gasolina","category":"transporte","store":"Shell","date":"2024-01-15","items":[]}
+{"success":false,"error":"La imagen no parece ser una factura o recibo válido"}`;
+
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { text: prompt },
+              {
+                inline_data: {
+                  mime_type: mimeType,
+                  data: imageBase64
+                }
+              }
+            ]
+          }],
+          generationConfig: { temperature: 0.1, maxOutputTokens: 500 }
+        }),
+        signal: AbortSignal.timeout(30000)
+      }
+    );
 
     const data = await res.json();
-    console.log('Groq respuesta:', JSON.stringify(data).substring(0, 300));
-
-    if (data.error) {
-      console.log('Groq error:', data.error.message);
+    
+    if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
+      console.log('⚠️ Gemini Vision: respuesta vacía');
       return null;
     }
 
-    const raw = data.choices?.[0]?.message?.content?.trim();
-    if (!raw) {
-      console.log('⚠️ Groq: respuesta vacía');
-      return null;
-    }
-
-    console.log('Groq texto:', raw.substring(0, 200));
-
-    const match = raw.match(/\{[^{}]*\}/);
+    const text = data.candidates[0].content.parts[0].text.trim().replace(/```json|```/g, '').trim();
+    const match = text.match(/\{[\s\S]*\}/);
+    
     if (!match) {
-      console.log('⚠️ No JSON found in:', raw.substring(0, 100));
+      console.log('⚠️ Gemini Vision: no se encontró JSON');
       return null;
     }
 
     const parsed = JSON.parse(match[0]);
-    console.log('🧾 Parsed:', parsed);
+    console.log(`🧾 Factura procesada: success=${parsed.success}, amount=${parsed.amount || 'N/A'}`);
     return parsed;
 
   } catch (e) {
@@ -234,7 +245,6 @@ async function processInvoiceImage(imageBase64, mimeType = 'image/jpeg') {
     return null;
   }
 }
-
 
 // Obtener imagen del mensaje de Telegram
 async function getImageFromMessage(msg) {
@@ -932,6 +942,65 @@ app.get('/ready', (req, res) => {
       gemini: !!GEMINI_KEY
     }
   });
+});
+
+// ========== CORS HELPER ==========
+function cors(res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+}
+app.options('/api/login',    (req, res) => { cors(res); res.sendStatus(200); });
+app.options('/api/data/:id', (req, res) => { cors(res); res.sendStatus(200); });
+
+// ========== WEB PANEL API ==========
+// Login — solo Telegram ID, sin PIN
+app.post('/api/login', async (req, res) => {
+  try {
+    cors(res);
+    const { phone } = req.body;
+    if (!phone) return res.status(400).json({ error: 'id required' });
+    const allData = await loadAllData();
+    const id = String(phone);
+    if (!allData.users[id]) {
+      allData.users[id] = { registered: true, transactions: [], budgets: {}, pending: null };
+      await saveAllData(allData);
+    }
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Get user data
+app.get('/api/data/:id', async (req, res) => {
+  try {
+    cors(res);
+    const id = decodeURIComponent(req.params.id);
+    const allData = await loadAllData();
+    if (!allData.users[id]) {
+      allData.users[id] = { registered: true, transactions: [], budgets: {}, pending: null };
+      await saveAllData(allData);
+    }
+    const user = allData.users[id];
+    res.json({ transactions: user.transactions || [], budgets: user.budgets || {} });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Save user data
+app.post('/api/data/:id', async (req, res) => {
+  try {
+    cors(res);
+    const id = decodeURIComponent(req.params.id);
+    const allData = await loadAllData();
+    if (!allData.users[id]) {
+      allData.users[id] = { registered: true, transactions: [], budgets: {}, pending: null };
+    }
+    const user = allData.users[id];
+    if (req.body.transactions !== undefined) user.transactions = req.body.transactions;
+    if (req.body.budgets !== undefined)      user.budgets      = req.body.budgets;
+    allData.users[id] = user;
+    await saveAllData(allData);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Start server

@@ -865,7 +865,7 @@
       padding:var(--space-lg) var(--space-md);
     ">
       <div id="loginTitle" style="font-family:var(--font-head);font-size:var(--fs-lg);font-weight:800;margin-bottom:4px;letter-spacing:-0.3px">Iniciar sesión</div>
-      <div id="loginSubtitle" style="color:var(--text-muted);font-size:var(--fs-sm);margin-bottom:20px">Ingresa tu Telegram ID y tu PIN</div>
+      <div id="loginSubtitle" style="color:var(--text-muted);font-size:var(--fs-sm);margin-bottom:20px">Ingresa tu Telegram ID para entrar</div>
 
       <div id="loginError" style="
         display:none;
@@ -882,32 +882,18 @@
           placeholder="Ej: 123456789"
           inputmode="numeric"
           style="font-family:var(--font-num);letter-spacing:0.5px"
-          onkeydown="if(event.key==='Enter')document.getElementById('loginPin').focus()"
+          onkeydown="if(event.key==='Enter')doLogin()"
         >
         <div style="color:var(--text-muted);font-size:var(--fs-2xs);margin-top:5px">
           Escríbele <span style="color:var(--accent);font-weight:600">/miid</span> al bot en Telegram para obtener tu ID
         </div>
       </div>
 
-      <!-- PIN field -->
-      <div class="form-group" style="margin-bottom:20px">
-        <label class="form-label">PIN de 4 dígitos</label>
-        <input class="form-input" id="loginPin" type="password"
-          placeholder="••••"
-          maxlength="4"
-          inputmode="numeric"
-          pattern="[0-9]*"
-          autocomplete="current-password"
-          style="font-family:var(--font-num);font-size:24px;letter-spacing:8px;text-align:center"
-          onkeydown="if(event.key==='Enter')doLogin()"
-        >
-      </div>
 
       <button class="submit-btn" id="loginBtn" onclick="doLogin()">Entrar</button>
 
       <div style="text-align:center;margin-top:16px;color:var(--text-muted);font-size:var(--fs-xs)">
-        ¿No tienes cuenta? Busca el bot en Telegram<br>
-        y escríbele para crear tu PIN
+        Busca <span style="color:var(--accent);font-weight:600">@MisCuentasRDBot</span> en Telegram<br>y escríbele /miid para obtener tu ID
       </div>
     </div>
   </div>
@@ -1100,8 +1086,8 @@ function loadSession() {
   } catch(e) { currentUser = null; }
 }
 
-function saveSession(phone, pin) {
-  currentUser = { phone, pin };
+function saveSession(phone) {
+  currentUser = { phone };
   sessionStorage.setItem('mcuser', JSON.stringify(currentUser));
 }
 
@@ -1113,13 +1099,11 @@ function clearSession() {
 // ── Login / Logout ──
 async function doLogin() {
   const telegramId = document.getElementById('loginPhone').value.trim().replace(/\D/g,'');
-  const pin        = document.getElementById('loginPin').value.trim();
   const errEl      = document.getElementById('loginError');
   const btn        = document.getElementById('loginBtn');
 
   errEl.style.display = 'none';
   if (!telegramId) { showLoginError('Ingresa tu Telegram ID'); return; }
-  if (!/^\d{4}$/.test(pin)) { showLoginError('El PIN debe tener exactamente 4 dígitos'); return; }
 
   btn.textContent = 'Verificando...';
   btn.disabled = true;
@@ -1128,21 +1112,15 @@ async function doLogin() {
     const res = await fetch(`${SERVER_URL}/api/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: telegramId, pin }),
+      body: JSON.stringify({ phone: telegramId }),
       signal: AbortSignal.timeout(10000)
     });
     const data = await res.json();
     if (!res.ok) {
-      if (data.error === 'user_not_found') {
-        showLoginError('ID no registrado. Búscate el bot en Telegram primero y escríbele para crear tu cuenta.');
-      } else if (data.error === 'invalid_pin') {
-        showLoginError('PIN incorrecto. Intenta de nuevo.');
-      } else {
-        showLoginError(data.error || 'Error al iniciar sesión');
-      }
+      showLoginError(data.error || 'Error al iniciar sesión');
       return;
     }
-    saveSession(telegramId, pin);
+    saveSession(telegramId);
     document.getElementById('loginScreen').style.display = 'none';
     showLoading(true);
     await cloudLoad();
@@ -1166,20 +1144,17 @@ function doLogout() {
   if (!confirm('¿Cerrar sesión?')) return;
   clearSession();
   txs = []; budgets = {};
-  document.getElementById('loginPin').value = '';
+  
   document.getElementById('loginError').style.display = 'none';
   document.getElementById('loginScreen').style.display = 'flex';
 }
 
 // Allow Enter key on PIN input
 document.addEventListener('DOMContentLoaded', () => {
-  const pinEl = document.getElementById('loginPin');
-  if (pinEl) {
-    pinEl.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
-  }
+
   const phoneEl = document.getElementById('loginPhone');
   if (phoneEl) {
-    phoneEl.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('loginPin').focus(); });
+    phoneEl.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
   }
 });
 
@@ -1187,7 +1162,7 @@ async function cloudLoad() {
   if (!currentUser) return;
   try {
     const phone = encodeURIComponent(currentUser.phone);
-    const res = await fetch(`${SERVER_URL}/api/data/${phone}?pin=${currentUser.pin}`, {
+    const res = await fetch(`${SERVER_URL}/api/data/${phone}`, {
       signal: AbortSignal.timeout(8000)
     });
     if (res.status === 401) { doLogout(); return; }
@@ -1215,8 +1190,7 @@ async function cloudSave() {
   localStorage.setItem('bgt_' + currentUser.phone, JSON.stringify(budgets));
   try {
     const phone = encodeURIComponent(currentUser.phone);
-    const pin   = encodeURIComponent(currentUser.pin);
-    await fetch(`${SERVER_URL}/api/data/${phone}?pin=${pin}`, {
+    await fetch(`${SERVER_URL}/api/data/${phone}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ transactions: txs, budgets }),
