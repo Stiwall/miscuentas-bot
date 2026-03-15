@@ -20,6 +20,7 @@ app.use(express.json());
 const JSONBIN_API_KEY = process.env.JSONBIN_API_KEY;
 const JSONBIN_BIN_ID = process.env.JSONBIN_BIN_ID;
 const GEMINI_KEY = process.env.GEMINI_API_KEY;
+const GROQ_KEY = process.env.GROQ_API_KEY;
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
 // Validar TODAS las variables críticas
@@ -43,6 +44,15 @@ const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
 
 bot.on('polling_error', (error) => {
   console.error('🔴 Telegram polling error:', error.message);
+  // 409 = another instance running, wait and retry
+  if (error.message && error.message.includes('409')) {
+    console.log('⏳ Conflicto 409 — esperando 5s para reintentar...');
+    setTimeout(() => {
+      bot.stopPolling().then(() => {
+        setTimeout(() => bot.startPolling(), 2000);
+      }).catch(() => {});
+    }, 5000);
+  }
 });
 
 // ========== SESSION / STATE ==========
@@ -165,79 +175,66 @@ function send(chatId, text) {
   return bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
 }
 
-// ========== IMAGE PROCESSING (Gemini Vision) ==========
+// ========== IMAGE PROCESSING (Groq Vision) ==========
 async function processInvoiceImage(imageBase64, mimeType = 'image/jpeg') {
-  if (!GEMINI_KEY) {
-    console.log('⚠️ Gemini API no configurada, no se puede procesar imagen');
+  if (!GROQ_KEY) {
+    console.log('⚠️ GROQ_API_KEY no configurada');
     return null;
   }
 
   try {
-    console.log('🖼️ Procesando imagen de factura con Gemini Vision...');
-    
-    const prompt = `Analiza esta imagen de factura/recibo y extrae la información financiera.
+    console.log('🖼️ Procesando imagen con Groq Vision...');
 
-Responde SOLO con JSON en una línea, sin markdown:
-{"success":true,"amount":numero,"description":"texto","category":"categoria","store":"nombre_tienda","date":"YYYY-MM-DD","items":[{"name":"producto","price":numero}]}
-
-Categorías disponibles: comida, transporte, servicios, salud, entretenimiento, ropa, educacion, negocio, otro
-
-Si no puedes leer la factura o no es un recibo válido:
-{"success":false,"error":"mensaje de error"}
-
-Reglas:
-- amount: monto TOTAL de la factura
-- description: descripción breve del gasto (ej: "Supermercado", "Restaurante", "Gasolina")
-- category: categoría más apropiada basada en los productos
-- store: nombre del comercio si está visible
-- date: fecha de la factura si está visible, sino usa la fecha de hoy
-- items: lista de productos si son legibles
-
-Ejemplos de respuesta:
-{"success":true,"amount":1850.50,"description":"Supermercado","category":"comida","store":"La Sirena","date":"2024-01-15","items":[{"name":"Arroz","price":85},{"name":"Aceite","price":250}]}
-{"success":true,"amount":3500,"description":"Gasolina","category":"transporte","store":"Shell","date":"2024-01-15","items":[]}
-{"success":false,"error":"La imagen no parece ser una factura o recibo válido"}`;
-
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [
-              { text: prompt },
-              {
-                inline_data: {
-                  mime_type: mimeType,
-                  data: imageBase64
-                }
-              }
-            ]
-          }],
-          generationConfig: { temperature: 0.1, maxOutputTokens: 500 }
-        }),
-        signal: AbortSignal.timeout(30000)
-      }
-    );
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${GROQ_KEY}`
+      },
+      body: JSON.stringify({
+        model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+        messages: [{
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: 'Analyze this receipt/invoice. Reply ONLY with valid JSON on one line, no other text: {"success":true,"amount":TOTAL_NUMBER,"description":"STORE_NAME","category":"CATEGORY","store":"STORE_NAME"} where CATEGORY is one of: comida,transporte,servicios,salud,entretenimiento,ropa,educacion,negocio,otro. If not a receipt: {"success":false}'
+            },
+            {
+              type: 'image_url',
+              image_url: { url: `data:${mimeType};base64,${imageBase64}` }
+            }
+          ]
+        }],
+        temperature: 0,
+        max_tokens: 150
+      }),
+      signal: AbortSignal.timeout(30000)
+    });
 
     const data = await res.json();
-    
-    if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
-      console.log('⚠️ Gemini Vision: respuesta vacía');
+    console.log('Groq respuesta:', JSON.stringify(data).substring(0, 300));
+
+    if (data.error) {
+      console.log('Groq error:', data.error.message);
       return null;
     }
 
-    const text = data.candidates[0].content.parts[0].text.trim().replace(/```json|```/g, '').trim();
-    const match = text.match(/\{[\s\S]*\}/);
-    
+    const raw = data.choices?.[0]?.message?.content?.trim();
+    if (!raw) {
+      console.log('⚠️ Groq: respuesta vacía');
+      return null;
+    }
+
+    console.log('Groq texto:', raw.substring(0, 200));
+    const match = raw.match(/\{[^{}]*\}/);
     if (!match) {
-      console.log('⚠️ Gemini Vision: no se encontró JSON');
+      console.log('⚠️ No JSON found in:', raw.substring(0, 100));
       return null;
     }
 
     const parsed = JSON.parse(match[0]);
-    console.log(`🧾 Factura procesada: success=${parsed.success}, amount=${parsed.amount || 'N/A'}`);
+    console.log('🧾 Parsed:', JSON.stringify(parsed));
     return parsed;
 
   } catch (e) {
@@ -245,6 +242,7 @@ Ejemplos de respuesta:
     return null;
   }
 }
+
 
 // Obtener imagen del mensaje de Telegram
 async function getImageFromMessage(msg) {
@@ -987,13 +985,11 @@ app.get('/api/data/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Save user data — merge strategy to avoid overwriting bot data
+// Save user data — merge to avoid overwriting bot transactions
 app.post('/api/data/:id', async (req, res) => {
   try {
     cors(res);
     const id = decodeURIComponent(req.params.id);
-
-    // Always reload fresh data before saving to avoid race conditions
     const allData = await loadAllData();
     if (!allData.users[id]) {
       allData.users[id] = { registered: true, transactions: [], budgets: {}, pending: null };
@@ -1001,33 +997,19 @@ app.post('/api/data/:id', async (req, res) => {
     const user = allData.users[id];
 
     if (req.body.transactions !== undefined) {
-      // Merge: keep bot transactions not in web list, add new web transactions
       const webTxs = req.body.transactions || [];
       const serverTxs = user.transactions || [];
-
-      // Build a set of web tx ids
-      const webIds = new Set(webTxs.map(t => t.id || t.timestamp).filter(Boolean));
-
-      // Keep server txs that web doesn't know about (added by bot after web loaded)
+      const webIds = new Set(webTxs.map(t => String(t.id || t.timestamp)).filter(Boolean));
       const botOnlyTxs = serverTxs.filter(t => {
-        const txId = t.id || t.timestamp;
+        const txId = String(t.id || t.timestamp || '');
         return txId && !webIds.has(txId);
       });
-
-      // Final = web transactions + bot-only transactions, sorted by date
-      const merged = [...webTxs, ...botOnlyTxs].sort((a, b) => {
-        const da = new Date(a.timestamp || a.date || 0);
-        const db = new Date(b.timestamp || b.date || 0);
-        return da - db;
-      });
-
-      user.transactions = merged;
+      user.transactions = [...webTxs, ...botOnlyTxs].sort((a, b) =>
+        new Date(a.timestamp || a.date || 0) - new Date(b.timestamp || b.date || 0)
+      );
     }
 
-    if (req.body.budgets !== undefined) {
-      user.budgets = req.body.budgets;
-    }
-
+    if (req.body.budgets !== undefined) user.budgets = req.body.budgets;
     allData.users[id] = user;
     await saveAllData(allData);
     res.json({ ok: true });
@@ -1040,7 +1022,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ MisCuentas RD Bot iniciado`);
   console.log(`🌐 Puerto: ${PORT}`);
   console.log(`🤖 Telegram: Conectado`);
-  console.log(`🧾 Procesamiento de facturas: ${GEMINI_KEY ? 'Activo' : 'Inactivo (falta GEMINI_API_KEY)'}`);
+  console.log(`🧾 Procesamiento de facturas: ${GROQ_KEY ? 'Activo (Groq)' : 'Inactivo (falta GROQ_API_KEY)'}`);
   console.log(`========================================\n`);
 });
 
