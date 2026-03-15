@@ -1,6 +1,6 @@
 /**
  * MisCuentas — Personal Finance Bot Server
- * Hosting: Railway | Stack: Express + Telegram + Groq Vision + JSONBin
+ * Hosting: Railway.app | Stack: Express + Telegram + Groq Vision + JSONBin
  */
 
 const express = require('express');
