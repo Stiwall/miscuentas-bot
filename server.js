@@ -35,7 +35,57 @@ bot.on('polling_error', err => {
 // ─── IN-MEMORY ────────────────────────────────────────────────────────────
 const pendingTx = {}; // { chatId: tx } awaiting confirmation
 
+// ─── LANGUAGE ─────────────────────────────────────────────────────────────
+const userLang = {}; // { chatId: 'es'|'en' }
+
+const MONTHS_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const MONTHS_EN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+function detectLang(msg) {
+  const t = msg.toLowerCase();
+  const esWords = ['gasté','gaste','pagué','pague','compré','compre','deposité','deposite','cobré','cobre','recibí','recibi','ingresé','ingrese','sueldo','quincena','resumen','cuentas','alertas','historial','presupuesto','ayuda','hola','gracias','si','sí','buenos'];
+  return esWords.some(w => t.includes(w)) ? 'es' : 'en';
+}
+
+function getLang(chatId, msg) {
+  if (!userLang[chatId]) {
+    userLang[chatId] = detectLang(msg || '');
+  }
+  return userLang[chatId];
+}
+
+const MSG = {
+  miid: (id, lang) => lang === 'es'
+    ? `🪪 Tu Telegram ID:\n\n\\`${id}\\`\n\nÚsalo para entrar al panel web.`
+    : `🪪 Your Telegram ID:\n\n\\`${id}\\`\n\nUse it to log in to the web panel.`,
+  welcome: (id, lang) => lang === 'es'
+    ? `👋 *¡Bienvenido a MisCuentas!*\n\n🎉 Ya puedes registrar tus finanzas.\n\nTu ID: \\`${id}\\`\n\nEnvía *ayuda* para ver los comandos.`
+    : `👋 *Welcome to MisCuentas!*\n\n🎉 Start tracking your finances now.\n\nYour ID: \\`${id}\\`\n\nSend *help* for all commands.`,
+  recorded: (p, lang) => lang === 'es'
+    ? `✅ *Registrado*\n\n${p.emoji} ${p.desc}\n💰 ${p.amount}\n${p.accEmoji} ${p.account}`
+    : `✅ *Recorded*\n\n${p.emoji} ${p.desc}\n💰 ${p.amount}\n${p.accEmoji} ${p.account}`,
+  noPending: (lang) => lang === 'es' ? '❌ No hay transacción pendiente.' : '❌ No pending transaction.',
+  cancelled: (lang) => lang === 'es' ? '❌ Cancelado.' : '❌ Cancelled.',
+  nothingCancel: (lang) => lang === 'es' ? '❌ Nada que cancelar.' : '❌ Nothing to cancel.',
+  notUnderstood: (lang) => lang === 'es'
+    ? `🤔 No entendí ese mensaje.\n\nEnvía *ayuda* para ver los comandos.\n\nEjemplos:\n• gasté 350 en comida\n• pagué la luz 1200 con banco\n• deposité el sueldo 28000\n• 📷 Envía una foto de factura`
+    : `🤔 I didn't understand that.\n\nSend *help* to see commands.\n\nExamples:\n• spent 50 on food\n• paid rent 800 with bank\n• received salary 2000\n• 📷 Send a receipt photo`,
+  notRecognized: (lang) => lang === 'es'
+    ? '🤔 Comando no reconocido. Envía *ayuda* para ver los comandos.'
+    : '🤔 Command not recognized. Send *help* for all commands.',
+  receipt: (tx, lang) => lang === 'es'
+    ? `🧾 *Factura detectada*\n\n📍 ${tx.desc}\n💰 ${tx.amount}\n${tx.catEmoji} ${tx.cat}\n\n✅ Responde *si* para confirmar\n❌ Responde *no* para cancelar\n\n💡 Para cambiar cuenta: *si banco* o *si tarjeta*`
+    : `🧾 *Receipt detected*\n\n📍 ${tx.desc}\n💰 ${tx.amount}\n${tx.catEmoji} ${tx.cat}\n\n✅ Reply *yes* to confirm\n❌ Reply *no* to cancel\n\n💡 To change account: *yes bank* or *yes card*`,
+  noGroq: (lang) => lang === 'es' ? '❌ El procesamiento de facturas no está configurado.' : '❌ Receipt processing is not configured.',
+  noPhoto: (lang) => lang === 'es' ? '❌ No pude obtener la imagen. Intenta de nuevo.' : '❌ Could not get the image. Please try again.',
+  analyzing: (lang) => lang === 'es' ? '🔄 *Analizando factura...*' : '🔄 *Analyzing receipt...*',
+  photoError: (lang) => lang === 'es' ? '❌ No pude analizar la imagen. Intenta con una foto más clara.' : '❌ Could not analyze the image. Try a clearer photo.',
+  photoUnreadable: (lang) => lang === 'es' ? '❌ No pude leer la factura. Asegúrate que sea clara y legible.' : '❌ Could not read the receipt. Make sure it is clear and legible.',
+  generalError: (lang) => lang === 'es' ? '❌ Ocurrió un error. Intenta de nuevo.' : '❌ An error occurred. Please try again.',
+};
+
 // ─── DATA ─────────────────────────────────────────────────────────────────
+
 async function loadData() {
   try {
     const r = await fetch(`${JSONBIN_URL}/latest`, {
@@ -261,7 +311,7 @@ async function handleText(msgText, chatId) {
     async function save() { allData.users[id]=user; await saveData(allData); }
 
     if (msg.toLowerCase()==='/miid'||msg.toLowerCase()==='miid') {
-      return `🪪 Your Telegram ID:\n\n\`${chatId}\`\n\nUse it to log in to the web panel.`;
+      return MSG.miid(chatId, getLang(id, msg));
     }
 
     // Auto-register new user
@@ -269,26 +319,28 @@ async function handleText(msgText, chatId) {
       user.registered = true;
       user.pending = null;
       await save();
-      return `👋 *Welcome to MisCuentas!*\n\n🎉 Start tracking your finances now.\n\nYour ID: \`${chatId}\`\n\nSend *help* for all commands.`;
+      userLang[id] = detectLang(msg);
+      return MSG.welcome(chatId, userLang[id]);
     }
 
     const monthTxs = getMonthTxs(user.transactions, month, year);
     const parsed = await parseWithAI(msg) || fallbackParse(msg);
 
-    if (parsed?.cmd==='miid') return `🪪 Your Telegram ID:\n\n\`${chatId}\``;
+    if (parsed?.cmd==='miid') return MSG.miid(chatId, getLang(id, msg));
 
     if (parsed?.cmd==='confirmar') {
       const p = pendingTx[id];
-      if (p) { user.transactions.push(p); await save(); delete pendingTx[id]; return `✅ *Recorded*\n\n${CAT_EMOJI[p.cat]||'📦'} ${p.desc}\n💰 ${fmt(p.amount)}\n${ACC_EMOJI[p.account]||'💵'} ${p.account}`; }
-      return '❌ No pending transaction.';
+      if (p) { user.transactions.push(p); await save(); delete pendingTx[id];
+        return MSG.recorded({ emoji: CAT_EMOJI[p.cat]||'📦', desc: p.desc, amount: fmt(p.amount), accEmoji: ACC_EMOJI[p.account]||'💵', account: p.account }, getLang(id, msg)); }
+      return MSG.noPending(getLang(id, msg));
     }
 
     if (parsed?.cmd==='cancelar') {
-      if (pendingTx[id]) { delete pendingTx[id]; return '❌ Cancelled.'; }
-      return '❌ Nothing to cancel.';
+      if (pendingTx[id]) { delete pendingTx[id]; return MSG.cancelled(getLang(id, msg)); }
+      return MSG.nothingCancel(getLang(id, msg));
     }
 
-    if (!parsed) return `🤔 I didn't understand that.\n\nSend *help* to see commands.\n\nExamples:\n• spent 50 on food\n• paid rent 800 with bank\n• received salary 2000\n• 📷 Send a receipt photo`;
+    if (!parsed) return MSG.notUnderstood(getLang(id, msg));
 
     const cmd = parsed.cmd;
 
@@ -296,7 +348,11 @@ async function handleText(msgText, chatId) {
       const inc = monthTxs.filter(t=>t.type==='ingreso').reduce((s,t)=>s+t.amount,0);
       const exp = monthTxs.filter(t=>t.type==='egreso').reduce((s,t)=>s+t.amount,0);
       const bal = inc-exp;
-      return `💰 *Summary — ${MONTHS[month]} ${year}*\n\n▲ Income: *${fmt(inc)}*\n▼ Expenses: *${fmt(exp)}*\n\n${bal>=0?'✅':'🚨'} Balance: *${fmt(bal)}*\n\n_${monthTxs.length} transaction(s)_`;
+      const sl = getLang(id, msg);
+      const SM = sl==='es' ? MONTHS_ES : MONTHS_EN;
+      return sl==='es'
+        ? `💰 *Resumen — ${SM[month]} ${year}*\n\n▲ Ingresos: *${fmt(inc)}*\n▼ Egresos: *${fmt(exp)}*\n\n${bal>=0?'✅':'🚨'} Balance: *${fmt(bal)}*\n\n_${monthTxs.length} movimiento(s)_`
+        : `💰 *Summary — ${SM[month]} ${year}*\n\n▲ Income: *${fmt(inc)}*\n▼ Expenses: *${fmt(exp)}*\n\n${bal>=0?'✅':'🚨'} Balance: *${fmt(bal)}*\n\n_${monthTxs.length} transaction(s)_`;
     }
 
     if (cmd==='ver_cuentas') {
@@ -305,7 +361,8 @@ async function handleText(msgText, chatId) {
         const exp = monthTxs.filter(t=>t.type==='egreso'&&t.account===acc).reduce((s,t)=>s+t.amount,0);
         return `${ACC_EMOJI[acc]} *${acc}*\n   ▲ ${fmt(inc)}  ▼ ${fmt(exp)}\n   Balance: ${fmt(inc-exp)}`;
       });
-      return `🏦 *Accounts — ${MONTHS[month]}*\n\n${lines.join('\n\n')}`;
+      const al = getLang(id, msg); const AM = al==='es'?MONTHS_ES:MONTHS_EN;
+      return al==='es' ? `🏦 *Cuentas — ${AM[month]}*\n\n${lines.join('\n\n')}` : `🏦 *Accounts — ${AM[month]}*\n\n${lines.join('\n\n')}`;
     }
 
     if (cmd==='alertas') {
@@ -325,55 +382,49 @@ async function handleText(msgText, chatId) {
         if (pct>=100) alerts.push(`🚨 ${e} ${cat}: EXCEEDED (${fmt(spent)})`);
         else if (pct>=80) alerts.push(`⚠️ ${e} ${cat}: ${pct.toFixed(0)}% used`);
       }
-      return `🔔 *Alerts — ${MONTHS[month]}*\n\n${alerts.join('\n')||'No alerts ✅'}`;
+      const aal = getLang(id, msg); const AAM = aal==='es'?MONTHS_ES:MONTHS_EN;
+      return aal==='es' ? `🔔 *Alertas — ${AAM[month]}*\n\n${alerts.join('\n')||'Sin alertas ✅'}` : `🔔 *Alerts — ${AAM[month]}*\n\n${alerts.join('\n')||'No alerts ✅'}`;
     }
 
     if (cmd==='historial') {
       const last5 = [...monthTxs].reverse().slice(0,5);
-      if (!last5.length) return `📭 No transactions in ${MONTHS[month]}`;
-      return `📋 *Recent — ${MONTHS[month]}*\n\n${last5.map(t=>`${t.type==='ingreso'?'▲':'▼'} ${CAT_EMOJI[t.cat]||'📦'} ${t.desc} — ${fmt(t.amount)}`).join('\n')}`;
+      const hl = getLang(id, msg); const HM = hl==='es'?MONTHS_ES:MONTHS_EN;
+      if (!last5.length) return hl==='es' ? `📭 Sin movimientos en ${HM[month]}` : `📭 No transactions in ${HM[month]}`;
+      return hl==='es'
+        ? `📋 *Recientes — ${HM[month]}*\n\n${last5.map(t=>`${t.type==='ingreso'?'▲':'▼'} ${CAT_EMOJI[t.cat]||'📦'} ${t.desc} — ${fmt(t.amount)}`).join('\n')}`
+        : `📋 *Recent — ${HM[month]}*\n\n${last5.map(t=>`${t.type==='ingreso'?'▲':'▼'} ${CAT_EMOJI[t.cat]||'📦'} ${t.desc} — ${fmt(t.amount)}`).join('\n')}`;
     }
 
     if (cmd==='presupuesto') {
-      if (!Object.keys(user.budgets).length) return `📊 *No budgets set.*\n\nCreate one:\n• budget food 500\n• presupuesto comida 5000`;
+      const bl = getLang(id, msg);
+      if (!Object.keys(user.budgets).length) return bl==='es'
+        ? `📊 *Sin presupuestos configurados.*\n\nCrea uno:\n• presupuesto comida 5000\n• budget food 500`
+        : `📊 *No budgets set.*\n\nCreate one:\n• budget food 500\n• presupuesto comida 5000`;
       const lines = Object.entries(user.budgets).map(([cat,limit]) => {
         const spent = monthTxs.filter(t=>t.type==='egreso'&&t.cat===cat).reduce((s,t)=>s+t.amount,0);
         const pct = Math.min(100,(spent/limit)*100);
         const bar = '█'.repeat(Math.floor(pct/10))+'░'.repeat(10-Math.floor(pct/10));
         return `${CAT_EMOJI[cat]||'📦'} ${cat}\n   ${bar} ${pct.toFixed(0)}%\n   ${fmt(spent)} / ${fmt(limit)}`;
       });
-      return `📊 *Budgets — ${MONTHS[month]}*\n\n${lines.join('\n\n')}`;
+      const BM = bl==='es'?MONTHS_ES:MONTHS_EN;
+      return bl==='es' ? `📊 *Presupuestos — ${BM[month]}*\n\n${lines.join('\n\n')}` : `📊 *Budgets — ${BM[month]}*\n\n${lines.join('\n\n')}`;
     }
 
     if (cmd==='set_budget') {
-      if (!parsed.budget_cat||!parsed.budget_amount||parsed.budget_amount<=0) return '❌ Example: budget food 500';
+      const sbl = getLang(id, msg);
+      if (!parsed.budget_cat||!parsed.budget_amount||parsed.budget_amount<=0) return sbl==='es' ? '❌ Ejemplo: presupuesto comida 5000' : '❌ Example: budget food 500';
       user.budgets[parsed.budget_cat] = parsed.budget_amount;
       await save();
-      return `✅ Budget set:\n\n${CAT_EMOJI[parsed.budget_cat]||'📦'} *${parsed.budget_cat}*: ${fmt(parsed.budget_amount)}/month`;
+      return sbl==='es'
+        ? `✅ Presupuesto guardado:\n\n${CAT_EMOJI[parsed.budget_cat]||'📦'} *${parsed.budget_cat}*: ${fmt(parsed.budget_amount)}/mes`
+        : `✅ Budget set:\n\n${CAT_EMOJI[parsed.budget_cat]||'📦'} *${parsed.budget_cat}*: ${fmt(parsed.budget_amount)}/month`;
     }
 
     if (cmd==='ayuda') {
-      return `📖 *MisCuentas — Commands*\n
-💰 *Queries:*
-• summary / resumen
-• accounts / cuentas
-• alerts / alertas
-• history / historial
-• budget / presupuesto
-
-📝 *Record:*
-• spent 50 on food
-• paid electricity 120 with bank
-• received salary 2000
-
-📷 *Receipts:*
-• Send a photo of any receipt
-
-📊 *Budgets:*
-• budget food 500
-• presupuesto comida 5000
-
-🪪 *My ID:* /miid`;
+      const yl = getLang(id, msg);
+      return yl==='es'
+        ? `📖 *MisCuentas — Comandos*\n\n💰 *Consultas:*\n• resumen — Balance del mes\n• cuentas — Por cuenta\n• alertas — Alertas financieras\n• historial — Últimos movimientos\n• presupuesto — Ver límites\n\n📝 *Registrar:*\n• gasté 350 en comida\n• pagué la luz 1200 con banco\n• deposité el sueldo 28000\n\n📷 *Facturas:*\n• Envía una foto de factura\n\n📊 *Presupuestos:*\n• presupuesto comida 5000\n\n🪪 *Mi ID:* /miid`
+        : `📖 *MisCuentas — Commands*\n\n💰 *Queries:*\n• summary / resumen\n• accounts / cuentas\n• alerts / alertas\n• history / historial\n• budget / presupuesto\n\n📝 *Record:*\n• spent 50 on food\n• paid rent 800 with bank\n• received salary 2000\n\n📷 *Receipts:*\n• Send a photo of any receipt\n\n📊 *Budgets:*\n• budget food 500\n• presupuesto comida 5000\n\n🪪 *My ID:* /miid`;
     }
 
     if (parsed.type==='ingreso'||parsed.type==='egreso') {
@@ -386,30 +437,32 @@ async function handleText(msgText, chatId) {
       };
       user.transactions.push(tx);
       await save();
+      const tl = getLang(id, msg);
+      userLang[id] = detectLang(msg); // update lang on each transaction
       return `${tx.type==='ingreso'?'▲':'▼'} *${tx.desc}*\n${CAT_EMOJI[tx.cat]||'📦'} ${tx.cat} • ${ACC_EMOJI[tx.account]||'💵'} ${tx.account}\n💰 ${fmt(tx.amount)}`;
     }
 
-    return `🤔 Command not recognized. Send *help* for all commands.`;
+    return MSG.notRecognized(getLang(id, msg));
 
   } catch (e) {
     console.error('handleText error:', e);
-    return '❌ An error occurred. Please try again.';
+    return MSG.generalError(getLang(id, ''));
   }
 }
 
 async function handlePhoto(msg, chatId) {
   const id = String(chatId);
   try {
-    if (!GROQ_KEY) return '❌ Receipt processing is not configured.';
+    const l = getLang(id, ''); if (!GROQ_KEY) return MSG.noGroq(l);
 
     const photo = await getPhoto(msg);
-    if (!photo) return '❌ Could not get the image. Please try again.';
+    if (!photo) return MSG.noPhoto(l);
 
-    await send(chatId, '🔄 *Analyzing receipt...*');
+    await send(chatId, MSG.analyzing(l));
 
     const result = await analyzeReceipt(photo.base64, photo.mimeType);
-    if (!result) return '❌ Could not analyze the image. Try a clearer photo.';
-    if (!result.success) return '❌ Could not read the receipt. Make sure it is clear and shows a valid receipt.';
+    if (!result) return MSG.photoError(l);
+    if (!result.success) return MSG.photoUnreadable(l);
 
     const now = new Date();
     const tx = {
@@ -424,7 +477,7 @@ async function handlePhoto(msg, chatId) {
 
     pendingTx[id] = tx;
 
-    return `🧾 *Receipt detected*\n\n📍 ${tx.desc}\n💰 ${fmt(tx.amount)}\n${CAT_EMOJI[tx.cat]||'📦'} ${tx.cat}\n\n✅ Reply *yes* to confirm\n❌ Reply *no* to cancel\n\n💡 To change account: *yes bank* or *yes card*`;
+    return MSG.receipt({ desc: tx.desc, amount: fmt(tx.amount), catEmoji: CAT_EMOJI[tx.cat]||'📦', cat: tx.cat }, l);
   } catch (e) {
     console.error('handlePhoto error:', e);
     return '❌ Error processing image. Please try again.';
