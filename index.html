@@ -182,19 +182,19 @@ body::before { content:''; position:fixed; top:-120px; left:50%; transform:trans
     <div style="text-align:center;margin-bottom:36px">
       <div style="width:72px;height:72px;background:linear-gradient(135deg,var(--accent),#00b87a);border-radius:22px;display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 16px;box-shadow:0 0 32px var(--accent-glow)">💰</div>
       <div style="font-family:var(--font-head);font-size:26px;font-weight:800;letter-spacing:-0.5px">mis<span style="color:var(--accent)">cuentas</span></div>
-      <div style="color:var(--text-muted);font-size:var(--fs-sm);margin-top:4px">Personal Finance</div>
+      <div data-i18n="appSubtitle" style="color:var(--text-muted);font-size:var(--fs-sm);margin-top:4px">Personal Finance</div>
     </div>
     <div style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:var(--space-lg) var(--space-md)">
-      <div style="font-family:var(--font-head);font-size:var(--fs-lg);font-weight:800;margin-bottom:4px">Sign in</div>
-      <div style="color:var(--text-muted);font-size:var(--fs-sm);margin-bottom:20px">Enter your Telegram ID</div>
+      <div data-i18n="signIn" style="font-family:var(--font-head);font-size:var(--fs-lg);font-weight:800;margin-bottom:4px">Sign in</div>
+      <div data-i18n="enterTelegramId" style="color:var(--text-muted);font-size:var(--fs-sm);margin-bottom:20px">Enter your Telegram ID</div>
       <div id="loginError" style="display:none;background:var(--accent2-dim);border:1px solid #ff4d6d40;border-radius:var(--radius-xs);padding:10px 12px;color:var(--accent2);font-size:var(--fs-sm);font-weight:600;margin-bottom:14px"></div>
       <div class="form-group">
-        <label class="form-label">Telegram ID</label>
+        <label data-i18n="telegramIdLabel" class="form-label">Telegram ID</label>
         <input class="form-input" id="loginPhone" type="text" placeholder="e.g. 123456789" inputmode="numeric" style="font-family:var(--font-num);letter-spacing:0.5px" onkeydown="if(event.key==='Enter')doLogin()">
-        <div style="color:var(--text-muted);font-size:var(--fs-2xs);margin-top:5px">Send <span style="color:var(--accent);font-weight:600">/miid</span> to the bot on Telegram to get your ID</div>
+        <div data-i18n="telegramIdHint" style="color:var(--text-muted);font-size:var(--fs-2xs);margin-top:5px">Send <span style="color:var(--accent);font-weight:600">/miid</span> to the bot on Telegram to get your ID</div>
       </div>
       <button class="submit-btn" id="loginBtn" onclick="doLogin()">Enter</button>
-      <div style="text-align:center;margin-top:16px;color:var(--text-muted);font-size:var(--fs-xs)">Find the bot on Telegram and send <span style="color:var(--accent);font-weight:600">/miid</span></div>
+      <div data-i18n="findBot" style="text-align:center;margin-top:16px;color:var(--text-muted);font-size:var(--fs-xs)">Find the bot on Telegram and send <span style="color:var(--accent);font-weight:600">/miid</span></div>
     </div>
   </div>
 </div>
@@ -208,25 +208,26 @@ body::before { content:''; position:fixed; top:-120px; left:50%; transform:trans
       <button class="month-btn" onclick="changeMonth(-1)">‹</button>
       <button class="month-btn" onclick="changeMonth(1)">›</button>
     </div>
+    <button id="langToggle" onclick="setLang(lang==='es'?'en':'es')" style="background:var(--surface);border:1px solid var(--border2);border-radius:50px;padding:4px 10px;color:var(--text-secondary);font-size:var(--fs-xs);font-weight:600;cursor:pointer;flex-shrink:0;transition:all 0.2s">🌐 EN</button>
     <button onclick="doLogout()" title="Sign out" style="background:var(--surface);border:1px solid var(--border2);border-radius:50%;width:34px;height:34px;color:var(--text-muted);font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.2s" onmouseenter="this.style.borderColor='var(--accent2)';this.style.color='var(--accent2)'" onmouseleave="this.style.borderColor='var(--border2)';this.style.color='var(--text-muted)'">⏏</button>
   </div>
 </div>
 
 <!-- NAV -->
 <nav class="nav">
-  <button class="nav-btn active" onclick="showPage('resumen',this)">Summary</button>
-  <button class="nav-btn" onclick="showPage('movimientos',this)">Transactions</button>
-  <button class="nav-btn" onclick="showPage('presupuesto',this)">Budget</button>
-  <button class="nav-btn" onclick="showPage('graficas',this)">Charts</button>
-  <button class="nav-btn" onclick="showPage('alertas',this)">Alerts</button>
-  <button class="nav-btn" onclick="showPage('cuentas',this)">Accounts</button>
-  <button class="nav-btn" onclick="showPage('exportar',this)">Export</button>
+  <button class="nav-btn active" data-i18n="navSummary" onclick="showPage('resumen',this)">Resumen</button>
+  <button class="nav-btn" data-i18n="navTx" onclick="showPage('movimientos',this)">Movimientos</button>
+  <button class="nav-btn" data-i18n="navBudget" onclick="showPage('presupuesto',this)">Presupuesto</button>
+  <button class="nav-btn" data-i18n="navCharts" onclick="showPage('graficas',this)">Gráficas</button>
+  <button class="nav-btn" data-i18n="navAlerts" onclick="showPage('alertas',this)">Alertas</button>
+  <button class="nav-btn" data-i18n="navAccounts" onclick="showPage('cuentas',this)">Cuentas</button>
+  <button class="nav-btn" data-i18n="navExport" onclick="showPage('exportar',this)">Exportar</button>
 </nav>
 
 <!-- SUMMARY -->
 <div id="page-resumen" class="page active">
   <div class="balance-card">
-    <div class="balance-label">Monthly Balance</div>
+    <div class="balance-label" data-i18n="monthlyBalance">${T.monthlyBalance}</div>
     <div class="balance-amount" id="totalBalance">0.00</div>
     <div class="balance-row">
       <div class="balance-mini"><div class="balance-mini-label inc">▲ Income</div><div class="balance-mini-amount" id="totalInc">0.00</div></div>
@@ -356,8 +357,8 @@ async function doLogin() {
   const errEl = document.getElementById('loginError');
   const btn   = document.getElementById('loginBtn');
   errEl.style.display = 'none';
-  if (!telegramId) { showLoginError('Enter your Telegram ID'); return; }
-  btn.textContent = 'Verifying...';
+  if (!telegramId) { showLoginError(T.enterIdError); return; }
+  btn.textContent = T.verifying;
   btn.disabled = true;
   try {
     const res  = await fetch(`${SERVER_URL}/api/login`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ phone: telegramId }), signal: AbortSignal.timeout(10000) });
@@ -369,8 +370,8 @@ async function doLogin() {
     await cloudLoad();
     showLoading(false);
     renderAll();
-  } catch { showLoginError('Could not connect to server. Check your connection.'); }
-  finally { btn.textContent = 'Enter'; btn.disabled = false; }
+  } catch { showLoginError(T.connectError); }
+  finally { btn.textContent = T.enterBtn; btn.disabled = false; }
 }
 
 function showLoginError(msg) {
@@ -380,7 +381,7 @@ function showLoginError(msg) {
 }
 
 function doLogout() {
-  if (!confirm('Sign out?')) return;
+  if (!confirm(T.signOutConfirm)) return;
   clearSession();
   txs = []; budgets = {};
   document.getElementById('loginError').style.display = 'none';
@@ -409,7 +410,7 @@ async function cloudLoad() {
     if (currentUser) {
       txs     = JSON.parse(localStorage.getItem('mc_txs_' + currentUser.phone) || '[]');
       budgets = JSON.parse(localStorage.getItem('mc_bgt_' + currentUser.phone) || '{}');
-      if (txs.length > 0) setTimeout(() => toast('📶 Offline mode', 'error'), 500);
+      if (txs.length > 0) setTimeout(() => toast(T.offlineMode, 'error'), 500);
     }
   }
 }
@@ -427,6 +428,157 @@ async function cloudSave() {
       signal: AbortSignal.timeout(8000)
     });
   } catch { /* saved locally */ }
+}
+
+
+// ─── LANGUAGE ─────────────────────────────────────────────────────────────
+const TRANSLATIONS = {
+  es: {
+    appSubtitle: 'Finanzas Personales',
+    signIn: 'Iniciar sesión', enterTelegramId: 'Ingresa tu Telegram ID',
+    enterBtn: 'Entrar', verifying: 'Verificando...',
+    telegramIdLabel: 'Telegram ID', telegramIdHint: 'Escríbele /miid al bot en Telegram para obtener tu ID',
+    telegramIdPlaceholder: 'Ej: 123456789',
+    findBot: 'Busca el bot en Telegram y envía /miid',
+    enterIdError: 'Ingresa tu Telegram ID', connectError: 'No se pudo conectar al servidor.',
+    signOut: 'Cerrar sesión', signOutConfirm: '¿Cerrar sesión?',
+    monthlyBalance: 'Balance del mes', income: 'Ingresos', expenses: 'Egresos',
+    budget: 'Presupuesto', spent: 'gastado',
+    recentTx: 'Últimos movimientos', viewAll: 'Ver todos →',
+    allTx: 'Todos los movimientos', setLimits: 'Configurar límites mensuales',
+    saveBudget: 'Guardar Presupuesto', currentStatus: 'Estado actual',
+    incomeVsExpenses: 'Ingresos vs Egresos', expByCategory: 'Egresos por categoría',
+    exportData: 'Exportar datos', exportCSV: '📊 Exportar CSV / Excel',
+    exportPDF: '📄 Exportar reporte PDF', shareWhatsApp: '💬 Compartir por WhatsApp',
+    dangerZone: '⚠️ Zona de peligro', deleteMonth: '🗓️ Borrar solo este mes',
+    deleteAll: '🗑️ Borrar TODO (reset)',
+    newTx: 'Nuevo movimiento', incomeBtn: '▲ Ingreso', expenseBtn: '▼ Egreso',
+    description: 'Descripción', descPlaceholder: 'Ej: Salario, Supermercado...',
+    amount: 'Monto', category: 'Categoría', account: 'Cuenta',
+    cash: 'Efectivo', bank: 'Banco', card: 'Tarjeta', date: 'Fecha', save: 'Guardar',
+    noTx: 'Sin movimientos', tapToAdd: 'Toca + para agregar uno',
+    noTxMonth: 'Sin movimientos este mes', noLimits: 'Configura límites arriba para ver el estado',
+    noBudget: 'Sin presupuestos configurados.',
+    budgetSaved: '✅ Presupuesto guardado', offlineMode: '📶 Modo sin conexión',
+    limitSet: 'Límite: ', notSet: 'Sin límite', spentLabel: 'Gastado: ',
+    recentLabel: 'Recientes',
+    healthyFinances: 'Finanzas saludables', nearLimit: 'Cerca del límite',
+    exceededIncome: 'Los egresos superaron los ingresos',
+    noIncomeRecorded: 'Sin ingresos registrados', addIncome: 'Agrega tus ingresos del mes.',
+    pctSpent: '% gastado', pctIncome: '% de tus ingresos. ¡Vas bien!',
+    budgetExceeded: 'Límite superado: ', nearBudget: 'Cerca del límite: ',
+    confirmDelete: '¿Borrar todos los movimientos de', cannotUndo: '? No se puede deshacer.',
+    confirmDeleteAll: '⚠️ ¿Borrar TODOS los datos? No se puede deshacer.',
+    confirmDeleteAll2: '¿Confirmas el reset completo?',
+    deletedMonth: '✅ eliminado', appReset: '✅ App reseteada',
+    report: 'Reporte', generatedBy: 'Generado por MisCuentas',
+    whatsappMsg: '💰 *MisCuentas — ',
+    balance: 'Balance', noTxInMonth: 'Sin movimientos en ',
+    navSummary: 'Resumen', navTx: 'Movimientos', navBudget: 'Presupuesto',
+    navCharts: 'Gráficas', navAlerts: 'Alertas', navAccounts: 'Cuentas', navExport: 'Exportar',
+    cats: { salario:'Salario', negocio:'Negocio', inversion:'Inversión', regalo:'Regalo', otro_inc:'Otro', comida:'Comida', transporte:'Transporte', servicios:'Servicios', salud:'Salud', entretenimiento:'Entret.', ropa:'Ropa', educacion:'Educación', otro_exp:'Otro' },
+    accounts: { efectivo:'Efectivo', banco:'Banco', tarjeta:'Tarjeta' },
+    alertOverBudget: 'de déficit este mes.', alertPctIncome: '% de tus ingresos este mes.',
+    alertExceeded: 'Gastaste ', alertOf: ' de límite ', alertPctUsed: '% usado (',
+  },
+  en: {
+    appSubtitle: 'Personal Finance',
+    signIn: 'Sign in', enterTelegramId: 'Enter your Telegram ID',
+    enterBtn: 'Enter', verifying: 'Verifying...',
+    telegramIdLabel: 'Telegram ID', telegramIdHint: 'Send /miid to the bot on Telegram to get your ID',
+    telegramIdPlaceholder: 'e.g. 123456789',
+    findBot: 'Find the bot on Telegram and send /miid',
+    enterIdError: 'Enter your Telegram ID', connectError: 'Could not connect to server.',
+    signOut: 'Sign out', signOutConfirm: 'Sign out?',
+    monthlyBalance: 'Monthly Balance', income: 'Income', expenses: 'Expenses',
+    budget: 'Budget', spent: 'spent',
+    recentTx: 'Recent transactions', viewAll: 'View all →',
+    allTx: 'All transactions', setLimits: 'Set monthly limits',
+    saveBudget: 'Save Budget', currentStatus: 'Current status',
+    incomeVsExpenses: 'Income vs Expenses', expByCategory: 'Expenses by category',
+    exportData: 'Export data', exportCSV: '📊 Export CSV / Excel',
+    exportPDF: '📄 Export PDF report', shareWhatsApp: '💬 Share via WhatsApp',
+    dangerZone: '⚠️ Danger zone', deleteMonth: '🗓️ Delete this month only',
+    deleteAll: '🗑️ Reset all data',
+    newTx: 'New transaction', incomeBtn: '▲ Income', expenseBtn: '▼ Expense',
+    description: 'Description', descPlaceholder: 'e.g. Salary, Groceries...',
+    amount: 'Amount', category: 'Category', account: 'Account',
+    cash: 'Cash', bank: 'Bank', card: 'Card', date: 'Date', save: 'Save',
+    noTx: 'No transactions', tapToAdd: 'Tap + to add one',
+    noTxMonth: 'No transactions this month', noLimits: 'Set limits above to see status',
+    noBudget: 'No budgets set.',
+    budgetSaved: '✅ Budget saved', offlineMode: '📶 Offline mode',
+    limitSet: 'Limit: ', notSet: 'Not set', spentLabel: 'Spent: ',
+    recentLabel: 'Recent',
+    healthyFinances: 'Healthy finances', nearLimit: 'Near the limit',
+    exceededIncome: 'Expenses exceeded income',
+    noIncomeRecorded: 'No income recorded', addIncome: 'Add your income to see your balance.',
+    pctSpent: '% spent', pctIncome: '% of income. Keep it up!',
+    budgetExceeded: 'Budget exceeded: ', nearBudget: 'Near limit: ',
+    confirmDelete: 'Delete all transactions for', cannotUndo: '? This cannot be undone.',
+    confirmDeleteAll: '⚠️ Delete ALL data? This cannot be undone.',
+    confirmDeleteAll2: 'Final confirmation: reset everything?',
+    deletedMonth: '✅ deleted', appReset: '✅ App reset',
+    report: 'Report', generatedBy: 'Generated by MisCuentas',
+    whatsappMsg: '💰 *MisCuentas — ',
+    balance: 'Balance', noTxInMonth: 'No transactions in ',
+    navSummary: 'Summary', navTx: 'Transactions', navBudget: 'Budget',
+    navCharts: 'Charts', navAlerts: 'Alerts', navAccounts: 'Accounts', navExport: 'Export',
+    cats: { salario:'Salary', negocio:'Business', inversion:'Investment', regalo:'Gift', otro_inc:'Other', comida:'Food', transporte:'Transport', servicios:'Services', salud:'Health', entretenimiento:'Entert.', ropa:'Clothing', educacion:'Education', otro_exp:'Other' },
+    accounts: { efectivo:'Cash', banco:'Bank', tarjeta:'Card' },
+    alertOverBudget: 'over budget this month.', alertPctIncome: '% of income this month.',
+    alertExceeded: 'Spent ', alertOf: ' of ', alertPctUsed: '% used (',
+  }
+};
+
+function detectLang() {
+  const saved = localStorage.getItem('mc_lang');
+  if (saved) return saved;
+  const browser = (navigator.language || navigator.userLanguage || 'es').toLowerCase();
+  return browser.startsWith('es') ? 'es' : 'en';
+}
+
+let lang = detectLang();
+let T = TRANSLATIONS[lang];
+
+function setLang(l) {
+  lang = l;
+  T = TRANSLATIONS[lang];
+  localStorage.setItem('mc_lang', lang);
+  applyTranslations();
+  renderAll();
+}
+
+function applyTranslations() {
+  // Login
+  const sub = document.querySelector('#loginScreen [data-i18n="appSubtitle"]');
+  if (sub) sub.textContent = T.appSubtitle;
+  const si = document.querySelector('#loginScreen [data-i18n="signIn"]');
+  if (si) si.textContent = T.signIn;
+  const etid = document.querySelector('#loginScreen [data-i18n="enterTelegramId"]');
+  if (etid) etid.textContent = T.enterTelegramId;
+  const lbl = document.querySelector('[data-i18n="telegramIdLabel"]');
+  if (lbl) lbl.textContent = T.telegramIdLabel;
+  const hint = document.querySelector('[data-i18n="telegramIdHint"]');
+  if (hint) hint.innerHTML = `Send <span style="color:var(--accent);font-weight:600">/miid</span> ${lang==='es'?'al bot en Telegram para obtener tu ID':'to the bot on Telegram to get your ID'}`;
+  const ph = document.getElementById('loginPhone');
+  if (ph) ph.placeholder = T.telegramIdPlaceholder;
+  const btn = document.getElementById('loginBtn');
+  if (btn && !btn.disabled) btn.textContent = T.enterBtn;
+  const fb = document.querySelector('[data-i18n="findBot"]');
+  if (fb) fb.textContent = T.findBot;
+
+  // Nav
+  const navIds = ['navSummary','navTx','navBudget','navCharts','navAlerts','navAccounts','navExport'];
+  navIds.forEach(id => { const el = document.querySelector(`[data-i18n="${id}"]`); if (el) el.textContent = T[id]; });
+
+  // Language toggle
+  const ltBtn = document.getElementById('langToggle');
+  if (ltBtn) ltBtn.textContent = lang === 'es' ? '🌐 EN' : '🌐 ES';
+
+  // Update CATS with translated labels
+  CATS_INCOME.forEach(c => { if (T.cats[c.id]) c.label = T.cats[c.id]; });
+  CATS_EXPENSE.forEach(c => { if (T.cats[c.id]) c.label = T.cats[c.id]; });
 }
 
 // ─── DATA ─────────────────────────────────────────────────────────────────
@@ -460,6 +612,9 @@ let charts  = {};
 
 // ─── INIT ─────────────────────────────────────────────────────────────────
 async function init() {
+  // Apply language on start
+  applyTranslations();
+
   const now = new Date();
   currentMonth = now.getMonth();
   currentYear  = now.getFullYear();
@@ -636,6 +791,12 @@ function txHTML(t, showDelete=true) {
 }
 
 function renderBalance() {
+  const bl = document.getElementById('balanceLabel');
+  if (bl) bl.textContent = T.monthlyBalance;
+  const incLbl = document.querySelector('.balance-mini-label.inc');
+  if (incLbl) incLbl.textContent = '▲ ' + T.income;
+  const expLbl = document.querySelector('.balance-mini-label.exp');
+  if (expLbl) expLbl.textContent = '▼ ' + T.expenses;
   const m = getMonthTxs();
   const inc = m.filter(t=>t.type==='ingreso').reduce((s,t)=>s+t.amount,0);
   const exp = m.filter(t=>t.type==='egreso').reduce((s,t)=>s+t.amount,0);
@@ -646,7 +807,7 @@ function renderBalance() {
   document.getElementById('totalInc').textContent = fmt(inc);
   document.getElementById('totalExp').textContent = fmt(exp);
   const pct = inc>0 ? Math.round((exp/inc)*100) : 0;
-  document.getElementById('budgetPct').textContent = pct+'% spent';
+  document.getElementById('budgetPct').textContent = pct+'% '+T.spent;
 }
 
 function renderBudgetBars() {
@@ -662,19 +823,19 @@ function renderBudgetBars() {
       ${limit>0?`<div class="budget-bar-bg"><div class="budget-bar-fill" style="width:${pct}%;background:${color}"></div></div>`:''}
     </div>`;
   }).join('');
-  document.getElementById('budgetBars').innerHTML = html || '<div style="color:var(--text-muted);font-size:13px">No expenses this month</div>';
+  document.getElementById('budgetBars').innerHTML = html || ('<div style="color:var(--text-muted);font-size:13px">' + T.noTxMonth + '</div>');
 }
 
 function renderRecentTx() {
   const m = getMonthTxs().slice().reverse().slice(0,5);
   document.getElementById('recentTx').innerHTML = m.length ? m.map(t=>txHTML(t,false)).join('') :
-    '<div class="empty"><div class="empty-icon">📭</div><div class="empty-title">No transactions</div><p>Tap + to add one</p></div>';
+    ('<div class="empty"><div class="empty-icon">📭</div><div class="empty-title">' + T.noTx + '</div><p>' + T.tapToAdd + '</p></div>');
 }
 
 function renderAllTx() {
   const m = getMonthTxs().slice().reverse();
   document.getElementById('allTx').innerHTML = m.length ? m.map(t=>txHTML(t)).join('') :
-    '<div class="empty"><div class="empty-icon">📭</div><div class="empty-title">No transactions this month</div></div>';
+    ('<div class="empty"><div class="empty-icon">📭</div><div class="empty-title">' + T.noTxMonth + '</div></div>');
 }
 
 function renderBudgetPage() {
@@ -694,7 +855,7 @@ function renderBudgetPage() {
       ${limit>0?`<div class="budget-bar-bg"><div class="budget-bar-fill" style="width:${pct}%;background:${color}"></div></div>`:''}
     </div>`;
   }).filter(Boolean).join('');
-  document.getElementById('budgetStatus').innerHTML = html || '<div style="color:var(--text-muted);font-size:13px;text-align:center;padding:20px">Set limits above to see status</div>';
+  document.getElementById('budgetStatus').innerHTML = html || ('<div style="color:var(--text-muted);font-size:13px;text-align:center;padding:20px">' + T.noLimits + '</div>');
 }
 
 async function saveBudgets() {
@@ -704,7 +865,7 @@ async function saveBudgets() {
   });
   await cloudSave();
   renderAll();
-  toast('✅ Budget saved');
+  toast(T.budgetSaved);
 }
 
 function renderAlerts() {
@@ -816,18 +977,18 @@ function exportWhatsApp() {
 
 // ─── RESET ────────────────────────────────────────────────────────────────
 async function resetMonth() {
-  if (!confirm(`Delete all transactions for ${MONTHS[currentMonth]} ${currentYear}? This cannot be undone.`)) return;
+  if (!confirm(`${T.confirmDelete} ${MONTHS[currentMonth]} ${currentYear}${T.cannotUndo}`)) return;
   txs = txs.filter(t => { const d=new Date(t.date+'T00:00:00'); return !(d.getMonth()===currentMonth&&d.getFullYear()===currentYear); });
   showLoading(true); await cloudSave(); showLoading(false);
-  renderAll(); toast(`✅ ${MONTHS[currentMonth]} deleted`);
+  renderAll(); toast(`${T.deletedMonth} ${MONTHS[currentMonth]}`);
 }
 
 async function resetAll() {
-  if (!confirm('⚠️ Delete ALL data? This cannot be undone.')) return;
-  if (!confirm('Final confirmation: reset everything?')) return;
+  if (!confirm(T.confirmDeleteAll)) return;
+  if (!confirm(T.confirmDeleteAll2)) return;
   txs = []; budgets = {};
   showLoading(true); await cloudSave(); showLoading(false);
-  renderAll(); toast('✅ App reset');
+  renderAll(); toast(T.appReset);
 }
 
 // ─── START ────────────────────────────────────────────────────────────────
