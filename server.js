@@ -112,7 +112,7 @@ async function saveAllData(data) {
 function getUser(allData, id) {
   if (!allData.users[id]) {
     allData.users[id] = { 
-      pin: null, 
+      registered: false, 
       transactions: [], 
       budgets: {}, 
       pending: null, 
@@ -495,109 +495,20 @@ async function handleMessage(msgText, chatId) {
       return `🪪 Tu Telegram ID es:\n\n\`${chatId}\`\n\nÚsalo para iniciar sesión en el panel web.`;
     }
 
-    // ── New user: create PIN ──
-    if (!user.pin) {
-      if (user.pending === 'awaiting_new_pin') {
-        if (!isValidPin(msg)) return '❌ El PIN debe ser exactamente *4 dígitos numéricos*.\n\nEjemplo: `1234`\n\nIngresa tu nuevo PIN:';
-        user.tempPin = msg;
-        user.pending = 'awaiting_pin_confirm';
-        await saveUser();
-        return '🔒 Confirma tu PIN ingresándolo de nuevo:';
-      }
-      if (user.pending === 'awaiting_pin_confirm') {
-        if (msg !== user.tempPin) {
-          user.pending = 'awaiting_new_pin';
-          user.tempPin = null;
-          await saveUser();
-          return '❌ Los PINs no coinciden. Inténtalo de nuevo.\n\nIngresa un PIN de *4 dígitos*:';
-        }
-        user.pin = msg;
-        user.pending = null;
-        user.tempPin = null;
-        await saveUser();
-        sessions[id] = true;
-        return `✅ *¡PIN creado exitosamente!*\n\n🎉 Bienvenido a *MisCuentas RD*\n\nYa puedes registrar tus gastos e ingresos.\n\nTu ID de Telegram es: \`${chatId}\`\nGuárdalo para el panel web.\n\nEnvía *ayuda* para ver todos los comandos.`;
-      }
-      // First message ever
-      user.pending = 'awaiting_new_pin';
-      user.tempPin = null;
-      await saveUser();
-      return `👋 ¡Bienvenido a *MisCuentas RD*!\n\nPara proteger tus datos, crea un *PIN de 4 dígitos*.\n\nEste PIN es tuyo y privado.\n\nIngresa tu PIN:`;
-    }
-
-    // ── PIN change flow ──
-    if (user.pending === 'awaiting_change_pin_new') {
-      if (!isValidPin(msg)) return '❌ El PIN debe ser exactamente *4 dígitos numéricos*.\n\nIngresa tu nuevo PIN:';
-      user.tempPin = msg;
-      user.pending = 'awaiting_change_pin_confirm';
-      await saveUser();
-      return '🔒 Confirma el nuevo PIN:';
-    }
-    if (user.pending === 'awaiting_change_pin_confirm') {
-      if (msg !== user.tempPin) {
-        user.pending = 'awaiting_change_pin_new';
-        user.tempPin = null;
-        await saveUser();
-        return '❌ Los PINs no coinciden.\n\nIngresa el nuevo PIN de nuevo:';
-      }
-      user.pin = msg;
+    // ── Auto-register new user (no PIN) ──
+    if (!user.registered) {
+      user.registered = true;
       user.pending = null;
-      user.tempPin = null;
       await saveUser();
-      sessions[id] = true;
-      return '✅ *PIN actualizado correctamente.*';
+      return `👋 ¡Bienvenido a *MisCuentas RD*!\n\n🎉 Ya puedes registrar tus gastos.\n\nTu ID: \`${chatId}\`\n\nEnvía *ayuda* para ver los comandos.`;
     }
 
-    // ── Authentication ──
-    if (!sessions[id]) {
-      const att = pinAttempts[id] || { attempts: 0 };
-      if (att.lockedUntil && new Date() < att.lockedUntil) {
-        const mins = Math.ceil((att.lockedUntil - new Date()) / 60000);
-        return `🔒 Demasiados intentos fallidos. Espera *${mins} minuto(s)*.`;
-      }
-      if (user.pending !== 'awaiting_login_pin') {
-        user.pending = 'awaiting_login_pin';
-        await saveUser();
-        return `🔐 Ingresa tu *PIN de 4 dígitos* para acceder:`;
-      }
-      if (msg === user.pin) {
-        sessions[id] = true;
-        pinAttempts[id] = { attempts: 0 };
-        user.pending = null;
-        await saveUser();
-        return `✅ *Acceso concedido*\n\n¡Hola! Estás dentro de MisCuentas RD.\n\nEnvía *ayuda* para ver los comandos.`;
-      } else {
-        att.attempts = (att.attempts || 0) + 1;
-        if (att.attempts >= MAX_ATTEMPTS) {
-          att.lockedUntil = new Date(Date.now() + 5 * 60 * 1000);
-          pinAttempts[id] = att;
-          return `🚨 *3 intentos fallidos.* Bloqueado por *5 minutos*.\n\nEscribe *resetpin* si olvidaste tu PIN.`;
-        }
-        pinAttempts[id] = att;
-        const left = MAX_ATTEMPTS - att.attempts;
-        return `❌ PIN incorrecto. Te quedan *${left} intento(s)*.\n\nIngresa tu PIN:`;
-      }
-    }
 
-    // ── Authenticated commands ──
+    // ── Commands ──
     const t = msg.toLowerCase().trim();
-    
-    if (t === 'resetpin' || t === '/resetpin') {
-      user.pending = 'awaiting_change_pin_new';
-      user.tempPin = null;
-      await saveUser();
-      return `🔑 *Cambiar PIN*\n\nIngresa tu nuevo PIN de *4 dígitos*:`;
-    }
 
     const monthTxs = getMonthTxs(user.transactions, month, year);
     let parsed = await parseWithAI(msg) || fallbackParse(msg);
-
-    if (parsed?.cmd === 'cambiar_pin') {
-      user.pending = 'awaiting_change_pin_new';
-      user.tempPin = null;
-      await saveUser();
-      return `🔑 *Cambiar PIN*\n\nIngresa tu nuevo PIN de *4 dígitos*:`;
-    }
 
     if (parsed?.cmd === 'miid') {
       return `🪪 Tu Telegram ID es:\n\n\`${chatId}\``;
@@ -790,13 +701,7 @@ async function handleImageMessage(msg, chatId) {
     const user = getUser(allData, id);
 
     // Si no está autenticado, pedir PIN
-    if (!user.pin) {
-      return `👋 ¡Bienvenido a *MisCuentas RD*!\n\nPara proteger tus datos, crea un *PIN de 4 dígitos*.\n\nIngresa tu PIN:`;
-    }
-
-    if (!sessions[id]) {
-      return `🔐 Ingresa tu *PIN de 4 dígitos* para acceder:`;
-    }
+    // No PIN required - proceed
 
     // Verificar que Gemini está configurado
     if (!GEMINI_KEY) {
