@@ -1,3 +1,4 @@
+
 /**
  * MisCuentas RD — Bot Server v2
  * Stack : Express + Telegram Webhooks + PostgreSQL (Railway) + Groq Vision + Gemini
@@ -843,8 +844,6 @@ async function initDB() {
   `);
   await query(`CREATE INDEX IF NOT EXISTS idx_tx_user_date
     ON transactions(user_id, tx_date)`);
-  await query(`CREATE INDEX IF NOT EXISTS idx_tx_user_month
-    ON transactions(user_id, DATE_TRUNC('month', tx_date))`);
   console.log('✅  Database schema ready');
 }
 
