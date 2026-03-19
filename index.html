@@ -254,6 +254,11 @@ body::before { content:''; position:fixed; top:-120px; left:50%; transform:trans
 <div id="page-graficas" class="page">
   <div class="chart-card"><div class="section-title" id="chartBarTitle">INGRESOS VS EGRESOS</div><div class="chart-wrap"><canvas id="barChart"></canvas></div></div>
   <div class="chart-card"><div class="section-title" id="chartDonutTitle">EGRESOS POR CATEGORÍA</div><div class="chart-wrap"><canvas id="donutChart"></canvas></div></div>
+  <div class="chart-card"><div class="section-title" id="chartTrendTitle">TENDENCIA 6 MESES</div><div class="chart-wrap" style="height:220px"><canvas id="trendChart"></canvas></div></div>
+  <div class="chart-card">
+    <div class="section-title" id="chartStatsTitle">RESUMEN DEL MES</div>
+    <div id="chartStats" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px"></div>
+  </div>
 </div>
 
 <!-- ALERTS -->
@@ -341,7 +346,8 @@ const TRANSLATIONS = {
     recentTx:'RECIENTES', viewAll:'Ver todos →', allTx:'TODOS LOS MOVIMIENTOS',
     setLimits:'CONFIGURAR LÍMITES MENSUALES', saveBudget:'Guardar Presupuesto',
     currentStatus:'ESTADO ACTUAL', incomeVsExp:'INGRESOS VS EGRESOS',
-    expByCat:'EGRESOS POR CATEGORÍA', exportData:'EXPORTAR DATOS',
+    expByCat:'EGRESOS POR CATEGORÍA', trendTitle:'TENDENCIA 6 MESES', statsTitle:'RESUMEN DEL MES',
+    exportData:'EXPORTAR DATOS',
     exportCSV:'Exportar CSV / Excel', exportPDF:'Exportar reporte PDF',
     shareWhatsApp:'Compartir por WhatsApp', dangerZone:'⚠️ ZONA DE PELIGRO',
     deleteMonth:'🗓️ Borrar solo este mes', deleteAll:'🗑️ Borrar TODOS los datos',
@@ -376,7 +382,8 @@ const TRANSLATIONS = {
     recentTx:'RECENT', viewAll:'View all →', allTx:'ALL TRANSACTIONS',
     setLimits:'SET MONTHLY LIMITS', saveBudget:'Save Budget',
     currentStatus:'CURRENT STATUS', incomeVsExp:'INCOME VS EXPENSES',
-    expByCat:'EXPENSES BY CATEGORY', exportData:'EXPORT DATA',
+    expByCat:'EXPENSES BY CATEGORY', trendTitle:'6-MONTH TREND', statsTitle:'MONTH SUMMARY',
+    exportData:'EXPORT DATA',
     exportCSV:'Export CSV / Excel', exportPDF:'Export PDF report',
     shareWhatsApp:'Share via WhatsApp', dangerZone:'⚠️ DANGER ZONE',
     deleteMonth:'🗓️ Delete this month only', deleteAll:'🗑️ Reset all data',
@@ -610,6 +617,8 @@ function applyTranslations() {
   el('currentStatusTitle').textContent = T.currentStatus;
   el('chartBarTitle').textContent   = T.incomeVsExp;
   el('chartDonutTitle').textContent = T.expByCat;
+  el('chartTrendTitle').textContent = T.trendTitle;
+  el('chartStatsTitle').textContent = T.statsTitle;
   el('exportTitle').textContent     = T.exportData;
   el('exportCsvLabel').textContent  = T.exportCSV;
   el('exportPdfLabel').textContent  = T.exportPDF;
@@ -968,6 +977,69 @@ function renderCharts() {
     options:{ responsive:true, maintainAspectRatio:false,
               plugins:{ legend:{ position:'bottom', labels:{ color:'#7070a0', font:{ size:11 }, boxWidth:12, padding:12 } } } },
   });
+
+  // ─── TENDENCIA 6 MESES ───
+  const MN6 = lang === 'es' ? MONTHS_ES : MONTHS_EN;
+  const trend = [];
+  for (let i = 5; i >= 0; i--) {
+    let d = new Date(currentYear, currentMonth - i, 1);
+    let mo = d.getMonth(), yr = d.getFullYear();
+    const mTxs = txs.filter(t => { const td = new Date(t.date); return td.getMonth()===mo && td.getFullYear()===yr; });
+    trend.push({
+      label: MN6[mo].substring(0,3),
+      inc: mTxs.filter(t=>t.type==='ingreso').reduce((s,t)=>s+t.amount,0),
+      exp: mTxs.filter(t=>t.type==='egreso').reduce((s,t)=>s+t.amount,0),
+    });
+  }
+  if (charts.trend) { charts.trend.destroy(); charts.trend = null; }
+  charts.trend = new Chart(el('trendChart'), {
+    type: 'line',
+    data: {
+      labels: trend.map(t=>t.label),
+      datasets: [
+        { label: lang==='es'?'Ingresos':'Income',  data: trend.map(t=>t.inc), borderColor:'#00e5a0', backgroundColor:'rgba(0,229,160,0.1)', tension:0.4, fill:true, pointBackgroundColor:'#00e5a0', pointRadius:4 },
+        { label: lang==='es'?'Egresos':'Expenses', data: trend.map(t=>t.exp), borderColor:'#ff4d6d', backgroundColor:'rgba(255,77,109,0.1)', tension:0.4, fill:true, pointBackgroundColor:'#ff4d6d', pointRadius:4 },
+      ]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      interaction:{ mode:'index', intersect:false },
+      plugins:{ legend:{ labels:{ color:'#7070a0', font:{ size:11 }, boxWidth:12, padding:10 } } },
+      scales:{
+        x:{ grid:{ color:'#2a2a3d' }, ticks:{ color:'#7070a0' } },
+        y:{ grid:{ color:'#2a2a3d' }, ticks:{ color:'#7070a0', callback:v=>v.toLocaleString() } }
+      }
+    }
+  });
+
+  // ─── STATS TARJETAS ───
+  const prevMonth = new Date(currentYear, currentMonth - 1, 1);
+  const prevTxs = txs.filter(t => { const td = new Date(t.date); return td.getMonth()===prevMonth.getMonth() && td.getFullYear()===prevMonth.getFullYear(); });
+  const prevExp = prevTxs.filter(t=>t.type==='egreso').reduce((s,t)=>s+t.amount,0);
+  const prevInc = prevTxs.filter(t=>t.type==='ingreso').reduce((s,t)=>s+t.amount,0);
+  const incChange = prevInc > 0 ? ((inc - prevInc) / prevInc * 100).toFixed(0) : null;
+  const expChange = prevExp > 0 ? ((exp - prevExp) / prevExp * 100).toFixed(0) : null;
+  const avgExp = exp / Math.max(1, new Date(currentYear, currentMonth+1, 0).getDate());
+  const topCat = byCat.length > 0 ? byCat.reduce((a,b) => a.value>b.value?a:b) : null;
+
+  el('chartStats').innerHTML = [
+    `<div style="background:var(--surface2);border-radius:var(--radius-xs);padding:12px">
+      <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">${lang==='es'?'Gasto diario':'Daily avg'}</div>
+      <div style="font-size:18px;font-weight:700;color:var(--accent2)">${fmt(avgExp)}</div>
+    </div>`,
+    topCat ? `<div style="background:var(--surface2);border-radius:var(--radius-xs);padding:12px">
+      <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">${lang==='es'?'Mayor gasto':'Top expense'}</div>
+      <div style="font-size:15px;font-weight:700">${topCat.label}</div>
+    </div>` : '',
+    incChange !== null ? `<div style="background:var(--surface2);border-radius:var(--radius-xs);padding:12px">
+      <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">${lang==='es'?'Ingresos vs mes ant.':'Income vs prev'}</div>
+      <div style="font-size:18px;font-weight:700;color:${incChange>=0?'#00e5a0':'#ff4d6d'}">${incChange>=0?'+':''}${incChange}%</div>
+    </div>` : '',
+    expChange !== null ? `<div style="background:var(--surface2);border-radius:var(--radius-xs);padding:12px">
+      <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">${lang==='es'?'Gastos vs mes ant.':'Expenses vs prev'}</div>
+      <div style="font-size:18px;font-weight:700;color:${expChange<=0?'#00e5a0':'#ff4d6d'}">${expChange>=0?'+':''}${expChange}%</div>
+    </div>` : '',
+  ].join('');
 }
 
 // ─── EXPORT ───────────────────────────────────────────────────────────────────
