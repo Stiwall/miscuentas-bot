@@ -448,13 +448,20 @@ function loadSession() {
     if (s) currentUser = JSON.parse(s);
   } catch { currentUser = null; }
 }
-function saveSession(phone) {
-  currentUser = { phone };
+function saveSession(phone, token) {
+  currentUser = { phone, token };
   localStorage.setItem('mc_session', JSON.stringify(currentUser));
 }
 function clearSession() {
   currentUser = null;
   localStorage.removeItem('mc_session');
+}
+
+function authHeaders() {
+  return {
+    'Content-Type': 'application/json',
+    'x-session-token': currentUser?.token || '',
+  };
 }
 
 // ─── API ──────────────────────────────────────────────────────────────────────
@@ -466,13 +473,15 @@ async function apiLogin(phone) {
     signal : AbortSignal.timeout(10000),
   });
   if (!res.ok) throw new Error((await res.json()).error || 'Login failed');
-  return res.json();
+  return res.json(); // { ok, token, userId }
 }
 
 async function apiLoad(phone) {
   const res = await fetch(`${SERVER_URL}/api/data/${encodeURIComponent(phone)}`, {
-    signal: AbortSignal.timeout(10000),
+    headers: authHeaders(),
+    signal : AbortSignal.timeout(10000),
   });
+  if (res.status === 401 || res.status === 403) { clearSession(); location.reload(); return; }
   if (!res.ok) throw new Error('HTTP ' + res.status);
   return res.json();
 }
@@ -480,7 +489,7 @@ async function apiLoad(phone) {
 async function apiSave(phone, data) {
   await fetch(`${SERVER_URL}/api/data/${encodeURIComponent(phone)}`, {
     method : 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders(),
     body   : JSON.stringify(data),
     signal : AbortSignal.timeout(10000),
   });
@@ -488,8 +497,9 @@ async function apiSave(phone, data) {
 
 async function apiDeleteTx(phone, txId) {
   await fetch(`${SERVER_URL}/api/data/${encodeURIComponent(phone)}/tx/${txId}`, {
-    method: 'DELETE',
-    signal: AbortSignal.timeout(8000),
+    method : 'DELETE',
+    headers: authHeaders(),
+    signal : AbortSignal.timeout(8000),
   });
 }
 
@@ -530,8 +540,8 @@ async function doLogin() {
   btn.textContent = T.verifying;
   btn.disabled    = true;
   try {
-    await apiLogin(phone);
-    saveSession(phone);
+    const result = await apiLogin(phone);
+    saveSession(phone, result.token);
     document.getElementById('loginScreen').style.display = 'none';
     showLoading(true);
     await cloudLoad();
@@ -1074,3 +1084,4 @@ if ('serviceWorker' in navigator) {
 </script>
 </body>
 </html>
+
