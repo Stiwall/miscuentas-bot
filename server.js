@@ -20,6 +20,7 @@ const {
   GROQ_API_KEY,
   CRON_SECRET,
   WEBHOOK_SECRET,          // token aleatorio para validar llamadas de Telegram
+  SESSION_SECRET = 'miscuentas_secret_change_me', // secreto para firmar tokens de sesión
   PORT = 3000,
 } = process.env;
 
@@ -36,6 +37,39 @@ const pool = new Pool({
 });
 
 pool.on('error', err => console.error('PG pool error:', err.message));
+
+// ─── SESSION TOKENS ───────────────────────────────────────────────────────────
+const crypto = require('crypto');
+
+function generateToken(userId) {
+  const payload = `${userId}:${Date.now()}`;
+  const sig = crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('hex');
+  return Buffer.from(`${payload}:${sig}`).toString('base64url');
+}
+
+function verifyToken(token) {
+  try {
+    const decoded = Buffer.from(token, 'base64url').toString();
+    const lastColon = decoded.lastIndexOf(':');
+    const payload = decoded.substring(0, lastColon);
+    const sig = decoded.substring(lastColon + 1);
+    const expected = crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('hex');
+    if (sig !== expected) return null;
+    const colonIdx = payload.indexOf(':');
+    return payload.substring(0, colonIdx); // userId
+  } catch {
+    return null;
+  }
+}
+
+function authMiddleware(req, res, next) {
+  const token = req.headers['x-session-token'];
+  if (!token) return res.status(401).json({ error: 'unauthorized' });
+  const userId = verifyToken(token);
+  if (!userId) return res.status(401).json({ error: 'invalid token' });
+  req.userId = userId;
+  next();
+}
 
 async function query(sql, params = []) {
   const client = await pool.connect();
@@ -692,10 +726,20 @@ app.post(`/webhook/:secret`, async (req, res) => {
 });
 
 // ─── REST API (para el frontend en GitHub Pages) ──────────────────────────────
+const ALLOWED_ORIGINS = [
+  'https://stiwall.github.io',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+];
+
 app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin;
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-session-token');
+  res.setHeader('Vary', 'Origin');
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
@@ -703,24 +747,27 @@ app.use((req, res, next) => {
 app.get('/', (_, res) => res.json({ status: 'ok', service: 'MisCuentas v2', uptime: Math.floor(process.uptime()) }));
 app.get('/health', (_, res) => res.json({ status: 'healthy', groq: !!GROQ_API_KEY, gemini: !!GEMINI_API_KEY }));
 
-// Login / upsert de usuario
+// Login / upsert de usuario — devuelve token de sesión
 app.post('/api/login', async (req, res) => {
   try {
     const { phone } = req.body;
     if (!phone) return res.status(400).json({ error: 'id required' });
-    await ensureUser(String(phone), 'es');
-    res.json({ ok: true });
+    const id = String(phone);
+    await ensureUser(id, 'es');
+    const token = generateToken(id);
+    res.json({ ok: true, token, userId: id });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// GET datos del usuario
-app.get('/api/data/:id', async (req, res) => {
+// GET datos del usuario — requiere token válido
+app.get('/api/data/:id', authMiddleware, async (req, res) => {
   try {
-    const id   = decodeURIComponent(req.params.id);
+    const id = decodeURIComponent(req.params.id);
+    // Solo puede ver sus propios datos
+    if (req.userId !== id) return res.status(403).json({ error: 'forbidden' });
     await ensureUser(id);
     const txs     = await getAllTxs(id);
     const budgets = await getBudgets(id);
-    // Normalizar nombres de columna para el frontend
     const normalized = txs.map(t => ({
       id       : t.id,
       type     : t.type,
@@ -735,21 +782,21 @@ app.get('/api/data/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// POST (web guarda todas sus transacciones)
-app.post('/api/data/:id', async (req, res) => {
+// POST — requiere token válido
+app.post('/api/data/:id', authMiddleware, async (req, res) => {
   try {
-    const id      = decodeURIComponent(req.params.id);
+    const id = decodeURIComponent(req.params.id);
+    if (req.userId !== id) return res.status(403).json({ error: 'forbidden' });
     const { transactions, budgets } = req.body;
     await ensureUser(id);
 
     if (Array.isArray(transactions)) {
-      // Obtener IDs existentes para no duplicar
       const existing = await query('SELECT id FROM transactions WHERE user_id=$1', [id]);
       const existingIds = new Set(existing.rows.map(r => String(r.id)));
 
       for (const t of transactions) {
         const txId = String(t.id || t.timestamp || '');
-        if (!txId || existingIds.has(txId)) continue; // ya existe, skip
+        if (!txId || existingIds.has(txId)) continue;
         await query(
           `INSERT INTO transactions(id, user_id, type, amount, description, category, account, tx_date)
            VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(id) DO NOTHING`,
@@ -770,10 +817,11 @@ app.post('/api/data/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// DELETE transacción individual
-app.delete('/api/data/:id/tx/:txId', async (req, res) => {
+// DELETE — requiere token válido
+app.delete('/api/data/:id/tx/:txId', authMiddleware, async (req, res) => {
   try {
-    const id   = decodeURIComponent(req.params.id);
+    const id = decodeURIComponent(req.params.id);
+    if (req.userId !== id) return res.status(403).json({ error: 'forbidden' });
     const txId = req.params.txId;
     await deleteTxById(txId, id);
     res.json({ ok: true });
@@ -881,3 +929,4 @@ start();
 
 process.on('SIGTERM', () => { pool.end(); process.exit(0); });
 process.on('SIGINT',  () => { pool.end(); process.exit(0); });
+
