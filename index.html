@@ -271,9 +271,19 @@ body::before { content:''; position:fixed; top:-120px; left:50%; transform:trans
 <div id="page-exportar" class="page">
   <div class="budget-section">
     <div class="section-title" id="exportTitle">EXPORTAR DATOS</div>
+
+    <!-- Selector de mes para exportar -->
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+      <button onclick="exportMonthNav(-1)" style="background:var(--surface2);border:1px solid var(--border2);border-radius:50%;width:32px;height:32px;color:var(--text-secondary);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center">‹</button>
+      <div id="exportMonthLabel" style="flex:1;text-align:center;font-weight:700;font-size:var(--fs-sm)"></div>
+      <button onclick="exportMonthNav(1)" style="background:var(--surface2);border:1px solid var(--border2);border-radius:50%;width:32px;height:32px;color:var(--text-secondary);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center">›</button>
+    </div>
+    <div id="exportMonthStats" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px;text-align:center"></div>
+
     <button class="export-btn" onclick="exportCSV()">📊 <span id="exportCsvLabel">Exportar CSV / Excel</span></button>
     <button class="export-btn" onclick="exportPDF()">📄 <span id="exportPdfLabel">Exportar reporte PDF</span></button>
     <button class="export-btn" onclick="exportWhatsApp()">💬 <span id="exportWaLabel">Compartir por WhatsApp</span></button>
+    <button class="export-btn" onclick="exportAllCSV()" style="border-color:var(--accent);color:var(--accent)">📦 <span id="exportAllLabel">Exportar TODO (todos los meses)</span></button>
   </div>
   <div class="danger-zone">
     <div class="section-title" style="margin-bottom:12px" id="dangerTitle">⚠️ ZONA DE PELIGRO</div>
@@ -699,6 +709,7 @@ function showPage(id, btn) {
   btn.scrollIntoView({ behavior:'smooth', block:'nearest', inline:'center' });
   window.scrollTo({ top:0, behavior:'smooth' });
   if (id === 'graficas') setTimeout(renderCharts, 100);
+  if (id === 'exportar') setTimeout(initExportMonth, 50);
 }
 
 // ─── MODAL ────────────────────────────────────────────────────────────────────
@@ -1043,24 +1054,81 @@ function renderCharts() {
 }
 
 // ─── EXPORT ───────────────────────────────────────────────────────────────────
+// ─── EXPORT MONTH NAVIGATION ─────────────────────────────────────────────────
+let exportMonth, exportYear;
+
+function initExportMonth() {
+  if (exportMonth === undefined) { exportMonth = currentMonth; exportYear = currentYear; }
+  renderExportMonthBar();
+}
+
+function exportMonthNav(dir) {
+  exportMonth += dir;
+  if (exportMonth < 0)  { exportMonth = 11; exportYear--; }
+  if (exportMonth > 11) { exportMonth = 0;  exportYear++; }
+  renderExportMonthBar();
+}
+
+function renderExportMonthBar() {
+  const MN = lang === 'es' ? MONTHS_ES : MONTHS_EN;
+  el('exportMonthLabel').textContent = MN[exportMonth] + ' ' + exportYear;
+  const m = txs.filter(t => { const d = new Date(t.date); return d.getMonth()===exportMonth && d.getFullYear()===exportYear; });
+  const inc = m.filter(t=>t.type==='ingreso').reduce((s,t)=>s+t.amount,0);
+  const exp = m.filter(t=>t.type==='egreso').reduce((s,t)=>s+t.amount,0);
+  const bal = inc - exp;
+  el('exportMonthStats').innerHTML = [
+    `<div style="background:var(--surface2);border-radius:8px;padding:8px 4px"><div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.8px">${lang==='es'?'Ingresos':'Income'}</div><div style="font-weight:700;color:#00e5a0;font-size:13px">${fmt(inc)}</div></div>`,
+    `<div style="background:var(--surface2);border-radius:8px;padding:8px 4px"><div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.8px">${lang==='es'?'Egresos':'Expenses'}</div><div style="font-weight:700;color:#ff4d6d;font-size:13px">${fmt(exp)}</div></div>`,
+    `<div style="background:var(--surface2);border-radius:8px;padding:8px 4px"><div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.8px">${lang==='es'?'Balance':'Balance'}</div><div style="font-weight:700;color:${bal>=0?'#00e5a0':'#ff4d6d'};font-size:13px">${fmt(bal)}</div></div>`,
+  ].join('');
+}
+
+function getExportTxs() {
+  return txs.filter(t => { const d = new Date(t.date); return d.getMonth()===exportMonth && d.getFullYear()===exportYear; });
+}
+
 function exportCSV() {
-  const m   = getMonthTxs();
   const MN  = lang === 'es' ? MONTHS_ES : MONTHS_EN;
-  let csv   = 'Date,Type,Description,Category,Amount,Account\n';
+  const m   = getExportTxs();
+  if (!m.length) { toast(lang==='es'?'Sin movimientos ese mes':'No transactions that month','error'); return; }
+  const BOM = '\uFEFF'; // UTF-8 BOM para Excel
+  let csv = BOM + (lang==='es'
+    ? 'Fecha,Tipo,Descripción,Categoría,Monto,Cuenta\n'
+    : 'Date,Type,Description,Category,Amount,Account\n');
   m.forEach(t => {
     const c = getCatById(t.cat);
-    csv += `${t.date},${t.type},${t.desc},${c.label},${t.amount},${t.account}\n`;
+    const desc = `"${(t.desc||'').replace(/"/g,'""')}"`;
+    csv += `${t.date},${t.type},${desc},${c.label},${t.amount},${t.account}\n`;
   });
   const a = Object.assign(document.createElement('a'), {
-    href    : URL.createObjectURL(new Blob([csv], { type:'text/csv' })),
-    download: `miscuentas_${MN[currentMonth]}_${currentYear}.csv`,
+    href    : URL.createObjectURL(new Blob([csv], { type:'text/csv;charset=utf-8' })),
+    download: `miscuentas_${MN[exportMonth]}_${exportYear}.csv`,
+  });
+  a.click();
+}
+
+function exportAllCSV() {
+  if (!txs.length) { toast(lang==='es'?'Sin movimientos':'No transactions','error'); return; }
+  const BOM = '\uFEFF';
+  let csv = BOM + (lang==='es'
+    ? 'Fecha,Tipo,Descripción,Categoría,Monto,Cuenta\n'
+    : 'Date,Type,Description,Category,Amount,Account\n');
+  [...txs].sort((a,b)=>a.date.localeCompare(b.date)).forEach(t => {
+    const c = getCatById(t.cat);
+    const desc = `"${(t.desc||'').replace(/"/g,'""')}"`;
+    csv += `${t.date},${t.type},${desc},${c.label},${t.amount},${t.account}\n`;
+  });
+  const a = Object.assign(document.createElement('a'), {
+    href    : URL.createObjectURL(new Blob([csv], { type:'text/csv;charset=utf-8' })),
+    download: `miscuentas_todo_${new Date().toISOString().split('T')[0]}.csv`,
   });
   a.click();
 }
 
 function exportPDF() {
-  const m   = getMonthTxs();
+  const m   = getExportTxs();
   const MN  = lang === 'es' ? MONTHS_ES : MONTHS_EN;
+  if (!m.length) { toast(lang==='es'?'Sin movimientos ese mes':'No transactions that month','error'); return; }
   const inc = m.filter(t => t.type==='ingreso').reduce((s,t) => s+t.amount, 0);
   const exp = m.filter(t => t.type==='egreso').reduce((s,t)  => s+t.amount, 0);
   const bal = inc - exp;
@@ -1069,13 +1137,13 @@ function exportPDF() {
     return `<tr><td>${t.date}</td><td>${c.emoji} ${c.label}</td><td>${t.desc}</td><td style="color:${t.type==='ingreso'?'#00c87a':'#ff4d6d'};font-weight:600">${t.type==='ingreso'?'+':'-'}${fmt(t.amount)}</td></tr>`;
   }).join('');
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:sans-serif;padding:30px;color:#111}h1{margin-bottom:4px}.sub{color:#666;margin-bottom:20px}.summary{display:flex;gap:20px;margin-bottom:24px}.s-card{padding:16px 24px;border-radius:10px}.s-card.ok{background:#e8fff8;border:1px solid #00c87a}.s-card.exp{background:#fff0f3;border:1px solid #ff4d6d}.s-label{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#666;margin-bottom:4px}.s-amount{font-size:20px;font-weight:700}table{width:100%;border-collapse:collapse}th{text-align:left;padding:10px 12px;background:#f5f5f5;font-size:12px;text-transform:uppercase;letter-spacing:1px}td{padding:10px 12px;border-bottom:1px solid #eee;font-size:13px}.footer{margin-top:30px;color:#999;font-size:12px;text-align:center}</style></head><body>
-    <h1>MisCuentas</h1><div class="sub">${lang==='es'?'Reporte':'Report'} — ${MN[currentMonth]} ${currentYear}</div>
+    <h1>MisCuentas</h1><div class="sub">${lang==='es'?'Reporte':'Report'} — ${MN[exportMonth]} ${exportYear}</div>
     <div class="summary">
       <div class="s-card ok"><div class="s-label">${T.balance}</div><div class="s-amount">${fmt(bal)}</div></div>
       <div class="s-card ok"><div class="s-label">${lang==='es'?'Ingresos':'Income'}</div><div class="s-amount">${fmt(inc)}</div></div>
       <div class="s-card exp"><div class="s-label">${lang==='es'?'Egresos':'Expenses'}</div><div class="s-amount">${fmt(exp)}</div></div>
     </div>
-    <table><thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Amount</th></tr></thead><tbody>${rows}</tbody></table>
+    <table><thead><tr><th>${lang==='es'?'Fecha':'Date'}</th><th>${lang==='es'?'Categoría':'Category'}</th><th>${lang==='es'?'Descripción':'Description'}</th><th>${lang==='es'?'Monto':'Amount'}</th></tr></thead><tbody>${rows}</tbody></table>
     <div class="footer">Generated by MisCuentas · ${new Date().toLocaleDateString()}</div></body></html>`;
   const w = window.open('', '_blank');
   if (!w) { toast('⚠️ Permite ventanas emergentes', 'error'); return; }
@@ -1083,12 +1151,12 @@ function exportPDF() {
 }
 
 function exportWhatsApp() {
-  const m   = getMonthTxs();
+  const m   = getExportTxs();
   const MN  = lang === 'es' ? MONTHS_ES : MONTHS_EN;
   const inc = m.filter(t => t.type==='ingreso').reduce((s,t) => s+t.amount, 0);
   const exp = m.filter(t => t.type==='egreso').reduce((s,t)  => s+t.amount, 0);
   const bal = inc - exp;
-  const msg = `💰 *MisCuentas — ${MN[currentMonth]} ${currentYear}*\n\n▲ ${lang==='es'?'Ingresos':'Income'}: ${fmt(inc)}\n▼ ${lang==='es'?'Egresos':'Expenses'}: ${fmt(exp)}\n\n*${T.balance}: ${fmt(bal)}*\n\n_Generated with MisCuentas_`;
+  const msg = `💰 *MisCuentas — ${MN[exportMonth]} ${exportYear}*\n\n▲ ${lang==='es'?'Ingresos':'Income'}: ${fmt(inc)}\n▼ ${lang==='es'?'Egresos':'Expenses'}: ${fmt(exp)}\n\n*${T.balance}: ${fmt(bal)}*\n\n_Generated with MisCuentas_`;
   window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
 }
 
