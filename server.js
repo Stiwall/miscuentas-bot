@@ -750,7 +750,16 @@ app.post(`/webhook/:secret`, async (req, res) => {
   res.sendStatus(200); // Responder inmediatamente a Telegram
 
   const update = req.body;
+
+  // Log para debug — ver qué llega de Telegram
+  console.log('Webhook received:', JSON.stringify(update).substring(0, 300));
+
   const msg    = update?.message;
+  if (!msg) {
+    //可能是callback_query或其他类型的update
+    console.log('No message in update, type:', update.update_id ? 'id:' + update.update_id : 'unknown');
+    return;
+  }
   if (!msg) return;
 
   const chatId = msg.chat.id;
