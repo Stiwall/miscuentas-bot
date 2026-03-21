@@ -63,8 +63,45 @@ function verifyToken(token) {
   }
 }
 
-// ─── TELEGRAM OAUTH TOKENS ─────────────────────────────────────────────────────
-const pendingAuthTokens = new Map(); // token -> { telegram_id, session_token, completed, createdAt }
+// ─── TELEGRAM OAUTH TOKENS (DB-backed) ─────────────────────────────────────────
+
+// Create a pending auth token
+async function createAuthToken(token, telegramId) {
+  const sessionToken = generateToken(telegramId);
+  await query(
+    `INSERT INTO auth_tokens (token, telegram_id, session_token, created_at)
+     VALUES($1, $2, $3, NOW())
+     ON CONFLICT (token) DO UPDATE SET
+       telegram_id = EXCLUDED.telegram_id,
+       session_token = EXCLUDED.session_token,
+       created_at = NOW()`,
+    [token, telegramId, sessionToken]
+  );
+  return sessionToken;
+}
+
+// Get and delete an auth token (one-time use)
+async function consumeAuthToken(token) {
+  const r = await query(
+    `SELECT telegram_id, session_token FROM auth_tokens
+     WHERE token = $1 AND created_at > NOW() - INTERVAL '30 minutes'`,
+    [token]
+  );
+  if (!r.rows[0]) return null;
+  await query('DELETE FROM auth_tokens WHERE token = $1', [token]);
+  return r.rows[0];
+}
+
+// Check if token exists and is pending (not yet completed by bot)
+async function getAuthTokenStatus(token) {
+  const r = await query(
+    `SELECT telegram_id, session_token FROM auth_tokens
+     WHERE token = $1 AND created_at > NOW() - INTERVAL '30 minutes'`,
+    [token]
+  );
+  if (!r.rows[0]) return { exists: false, expired: true };
+  return { exists: true, telegram_id: r.rows[0].telegram_id, session_token: r.rows[0].session_token };
+}
 
 function authMiddleware(req, res, next) {
   const token = req.headers['x-session-token'];
@@ -720,14 +757,14 @@ app.post(`/webhook/:secret`, async (req, res) => {
   const text   = msg.text || '';
 
   // ── TELEGRAM OAUTH: /start tg_xxx or /start miscuentas?start=tg_xxx ────────
-  // Handles both: t.me/miscuentasbot?start=tg_xxx  AND  t.me/miscuentasbot/miscuentas?start=tg_xxx
+  // Handles both: t.me/Miscuentasrdbot?start=tg_xxx  AND  t.me/Miscuentasrdbot/miscuentas?start=tg_xxx
   let authToken = null;
   if (text.startsWith('/start tg_')) {
     authToken = text.replace('/start tg_', '').trim();
   } else if (text.startsWith('/start miscuentas?start=')) {
     authToken = text.replace('/start miscuentas?start=', '').trim();
   } else if (/^\/start miscuentas$/.test(text)) {
-    // Bot was opened from t.me/miscuentasbot/miscuentas without a token — redirect to bot
+    // Bot was opened from t.me/Miscuentasrdbot/miscuentas without a token — redirect to bot
     await sendMessage(chatId, '👋 Usa el botón de "Iniciar con Telegram" en la web para conectar tu cuenta.\n\nO envía /start nuevamente con un token válido.');
     return;
   }
@@ -735,16 +772,10 @@ app.post(`/webhook/:secret`, async (req, res) => {
     if (authToken) {
       try {
         // Generar session token para el usuario
-        const sessionToken = generateToken(String(chatId));
         await ensureUser(String(chatId), 'es');
 
-        // Guardar el resultado para que la web lo recoja
-        pendingAuthTokens.set(authToken, {
-          completed   : true,
-          telegram_id : String(chatId),
-          session_token: sessionToken,
-          createdAt   : Date.now(),
-        });
+        // Guardar token en DB (persiste aunque Railway se reinicie)
+        await createAuthToken(authToken, String(chatId));
 
         // Responder al usuario
         const lang = await getUserLang(String(chatId));
@@ -836,54 +867,32 @@ app.get('/miscuentas', (req, res) => {
 </html>`);
 });
 
-// Endpoint que el bot llama cuando el usuario hace /start tg_xxx
+// Endpoint que la página miscuentas llama al abrirse ( Deep link mini-app )
+// El token ya fue guardado por el webhook cuando el usuario clickeó START
 app.post('/api/telegram-auth', async (req, res) => {
   const { token } = req.body;
   if (!token) return res.status(400).json({ error: 'Missing token' });
-
-  // Si el token ya fue completado por el webhook, no hacer nada
-  const existing = pendingAuthTokens.get(token);
-  if (existing?.completed) {
-    return res.json({ ok: true, already_completed: true });
-  }
-
-  // Marcar como procesamiento (el webhook lo completará)
-  pendingAuthTokens.set(token, {
-    completed   : false,
-    telegram_id : null,
-    session_token: null,
-    createdAt   : Date.now(),
-  });
-
   res.json({ ok: true, pending: true });
 });
 
 // Polling endpoint — la web consulta si el token fue completado
-app.get('/auth-status', (req, res) => {
+app.get('/auth-status', async (req, res) => {
   const { token } = req.query;
   if (!token) return res.status(400).json({ error: 'Missing token' });
 
-  const pending = pendingAuthTokens.get(token);
+  const result = await consumeAuthToken(token);
 
-  if (!pending) {
-    // Token no existe o expiró (30 min)
+  if (!result) {
+    // Token no existe o expiró
     return res.json({ pending: false, ok: false, expired: true });
   }
 
-  // Limpiar tokens expirados (30 min)
-  if (Date.now() - pending.createdAt > 30 * 60 * 1000) {
-    pendingAuthTokens.delete(token);
-    return res.json({ pending: false, ok: false, expired: true });
-  }
-
-  if (pending.completed) {
-    // Limpiar después de entregar
-    const result = { ok: true, telegram_id: pending.telegram_id, token: pending.session_token };
-    pendingAuthTokens.delete(token);
-    return res.json(result);
-  }
-
-  res.json({ pending: true });
+  // Token consumido y eliminado (de DB) — retornamos los datos
+  res.json({
+    ok: true,
+    telegram_id: result.telegram_id,
+    token: result.session_token
+  });
 });
 
 app.get('/', (_, res) => res.json({ status: 'ok', service: 'MisCuentas v2', uptime: Math.floor(process.uptime()) }));
@@ -1030,6 +1039,14 @@ async function initDB() {
       user_id     TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
       tx_data     JSONB NOT NULL,
       created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+
+    // Auth tokens para Telegram OAuth (tabla persistente, no se pierde en restart)
+    `CREATE TABLE IF NOT EXISTS auth_tokens (
+      token        TEXT PRIMARY KEY,
+      telegram_id  TEXT NOT NULL,
+      session_token TEXT NOT NULL,
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`,
   ];
 
