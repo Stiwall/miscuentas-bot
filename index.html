@@ -614,7 +614,7 @@ async function loginWithTelegram() {
   statusEl.style.background   = 'var(--accent-dim)';
   statusEl.style.border      = '1px solid var(--accent)';
   statusEl.style.color       = 'var(--accent)';
-  statusEl.textContent        = '⏳ Abriendo Telegram...';
+  statusEl.textContent        = '⏳ Abriendo Telegram... (mantén la página abierta)';
   btn.disabled                = true;
 
   // Open Telegram bot with auth token
@@ -659,7 +659,7 @@ async function loginWithTelegram() {
       console.error('Telegram login poll error:', e);
     }
 
-    if (attempts > 60) { // 60 * 2s = 2 minutes timeout
+    if (attempts > 90) { // 90 * 2s = 3 minutes timeout (más tiempo por si Railway está dormido)
       clearInterval(pollInterval);
       statusEl.textContent = '❌ Tiempo agotado. Intenta de nuevo.';
       statusEl.style.background   = 'var(--accent2-dim)';
