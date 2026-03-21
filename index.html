@@ -621,7 +621,11 @@ async function loginWithTelegram() {
   const tgUrl = `https://t.me/Miscuentasrdbot/miscuentas?start=${authToken}`;
   window.open(tgUrl, '_blank');
 
-  // Poll for auth result (max 2 minutes)
+  // Update status to show we're waiting
+  statusEl.textContent = '✅ Bot abierto — esperando confirmación... (no cierres esta página)';
+  btn.disabled = true;
+
+  // Poll for auth result (max 3 minutes)
   let attempts = 0;
   const pollInterval = setInterval(async () => {
     attempts++;
@@ -657,6 +661,18 @@ async function loginWithTelegram() {
       }
     } catch(e) {
       console.error('Telegram login poll error:', e);
+      statusEl.textContent = '⚠️ Error: ' + e.message;
+      statusEl.style.background   = 'var(--accent2-dim)';
+      statusEl.style.border       = '1px solid var(--accent2)';
+      statusEl.style.color        = 'var(--accent2)';
+      btn.disabled = false;
+      clearInterval(pollInterval);
+      return;
+    }
+
+    // Mostrar progreso cada 10 segundos
+    if (attempts % 5 === 0) {
+      statusEl.textContent = '⏳ Esperando... (' + (attempts * 2) + 's) — asegúrate de hacer click en START';
     }
 
     if (attempts > 90) { // 90 * 2s = 3 minutes timeout (más tiempo por si Railway está dormido)
