@@ -22,6 +22,7 @@ const {
   WEBHOOK_SECRET,          // token aleatorio para validar llamadas de Telegram
   SESSION_SECRET = 'miscuentas_secret_change_me', // secreto para firmar tokens de sesión
   PORT = 3000,
+  API_BASE = '',
 } = process.env;
 
 ['TELEGRAM_BOT_TOKEN', 'DATABASE_URL'].forEach(k => {
@@ -61,6 +62,9 @@ function verifyToken(token) {
     return null;
   }
 }
+
+// ─── TELEGRAM OAUTH TOKENS ─────────────────────────────────────────────────────
+const pendingAuthTokens = new Map(); // token -> { telegram_id, session_token, completed, createdAt }
 
 function authMiddleware(req, res, next) {
   const token = req.headers['x-session-token'];
@@ -713,6 +717,38 @@ app.post(`/webhook/:secret`, async (req, res) => {
   if (!msg) return;
 
   const chatId = msg.chat.id;
+  const text   = msg.text || '';
+
+  // ── TELEGRAM OAUTH: /start tg_xxx ───────────────────────────────────────────
+  if (text.startsWith('/start tg_')) {
+    const authToken = text.replace('/start tg_', '').trim();
+    if (authToken) {
+      try {
+        // Generar session token para el usuario
+        const sessionToken = generateToken(String(chatId));
+        await ensureUser(String(chatId), 'es');
+
+        // Guardar el resultado para que la web lo recoja
+        pendingAuthTokens.set(authToken, {
+          completed   : true,
+          telegram_id : String(chatId),
+          session_token: sessionToken,
+          createdAt   : Date.now(),
+        });
+
+        // Responder al usuario
+        const lang = await getUserLang(String(chatId));
+        await sendMessage(chatId, lang === 'es'
+          ? '✅ ¡Cuenta conectada! Puedes volver a la web. Bienvenido a MisCuentas 💰'
+          : '✅ Account connected! You can go back to the web. Welcome to MisCuentas 💰'
+        );
+      } catch(e) {
+        console.error('Telegram OAuth error:', e.message);
+      }
+    }
+    return;
+  }
+
   try {
     if (msg.photo?.length > 0) {
       await handlePhoto(msg, chatId);
@@ -742,6 +778,102 @@ app.use((req, res, next) => {
   res.setHeader('Vary', 'Origin');
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
+});
+
+// ─── TELEGRAM OAUTH ────────────────────────────────────────────────────────────
+
+// Página que ve el usuario al abrir el deep link desde Telegram
+app.get('/miscuentas', (req, res) => {
+  const { start } = req.query;
+  if (!start || !start.startsWith('tg_')) {
+    return res.redirect('https://t.me/miscuentasbot');
+  }
+  const base = API_BASE || `https://${req.headers.host}`;
+  res.send(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Conectando...</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #080d1a; color: #eeeef8; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; text-align: center; }
+    .container { padding: 24px; }
+    h2 { color: #00e5a0; font-size: 24px; margin-bottom: 12px; }
+    p  { color: #a0a0c0; font-size: 16px; }
+    .spinner { font-size: 48px; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="spinner">⏳</div>
+    <h2>Conectando tu cuenta...</h2>
+    <p>Espera un momento</p>
+  </div>
+  <script>
+    fetch('${base}/api/telegram-auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: '${start}' })
+    }).then(() => {
+      setTimeout(() => window.close(), 800);
+    }).catch(() => {
+      document.querySelector('h2').textContent = '⚠️ Error de conexión';
+      document.querySelector('p').textContent = 'Cierra esta ventana e intenta de nuevo';
+    });
+  </script>
+</body>
+</html>`);
+});
+
+// Endpoint que el bot llama cuando el usuario hace /start tg_xxx
+app.post('/api/telegram-auth', async (req, res) => {
+  const { token } = req.body;
+  if (!token) return res.status(400).json({ error: 'Missing token' });
+
+  // Si el token ya fue completado por el webhook, no hacer nada
+  const existing = pendingAuthTokens.get(token);
+  if (existing?.completed) {
+    return res.json({ ok: true, already_completed: true });
+  }
+
+  // Marcar como procesamiento (el webhook lo completará)
+  pendingAuthTokens.set(token, {
+    completed   : false,
+    telegram_id : null,
+    session_token: null,
+    createdAt   : Date.now(),
+  });
+
+  res.json({ ok: true, pending: true });
+});
+
+// Polling endpoint — la web consulta si el token fue completado
+app.get('/auth-status', (req, res) => {
+  const { token } = req.query;
+  if (!token) return res.status(400).json({ error: 'Missing token' });
+
+  const pending = pendingAuthTokens.get(token);
+
+  if (!pending) {
+    // Token no existe o expiró (30 min)
+    return res.json({ pending: false, ok: false, expired: true });
+  }
+
+  // Limpiar tokens expirados (30 min)
+  if (Date.now() - pending.createdAt > 30 * 60 * 1000) {
+    pendingAuthTokens.delete(token);
+    return res.json({ pending: false, ok: false, expired: true });
+  }
+
+  if (pending.completed) {
+    // Limpiar después de entregar
+    const result = { ok: true, telegram_id: pending.telegram_id, token: pending.session_token };
+    pendingAuthTokens.delete(token);
+    return res.json(result);
+  }
+
+  res.json({ pending: true });
 });
 
 app.get('/', (_, res) => res.json({ status: 'ok', service: 'MisCuentas v2', uptime: Math.floor(process.uptime()) }));
