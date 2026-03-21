@@ -719,9 +719,19 @@ app.post(`/webhook/:secret`, async (req, res) => {
   const chatId = msg.chat.id;
   const text   = msg.text || '';
 
-  // ── TELEGRAM OAUTH: /start tg_xxx ───────────────────────────────────────────
+  // ── TELEGRAM OAUTH: /start tg_xxx or /start miscuentas?start=tg_xxx ────────
+  // Handles both: t.me/miscuentasbot?start=tg_xxx  AND  t.me/miscuentasbot/miscuentas?start=tg_xxx
+  let authToken = null;
   if (text.startsWith('/start tg_')) {
-    const authToken = text.replace('/start tg_', '').trim();
+    authToken = text.replace('/start tg_', '').trim();
+  } else if (text.startsWith('/start miscuentas?start=')) {
+    authToken = text.replace('/start miscuentas?start=', '').trim();
+  } else if (/^\/start miscuentas$/.test(text)) {
+    // Bot was opened from t.me/miscuentasbot/miscuentas without a token — redirect to bot
+    await sendMessage(chatId, '👋 Usa el botón de "Iniciar con Telegram" en la web para conectar tu cuenta.\n\nO envía /start nuevamente con un token válido.');
+    return;
+  }
+  if (authToken) {
     if (authToken) {
       try {
         // Generar session token para el usuario
