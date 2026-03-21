@@ -629,7 +629,7 @@ async function loginWithTelegram() {
   window.open(tgUrl, '_blank');
 
   // Update status to show we're waiting
-  statusEl.textContent = '✅ Bot abierto — espera 2s y haz click en START una segunda vez';
+  statusEl.textContent = '✅ Bot abierto — espera la página del bot y ciérrala cuando diga "Conectado"';
   btn.disabled = true;
 
   // Poll for auth result (max 3 minutes)

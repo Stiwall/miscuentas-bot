@@ -852,16 +852,54 @@ app.get('/miscuentas', (req, res) => {
     <p>Espera un momento</p>
   </div>
   <script>
+    // Notify server we're here, then poll until auth is confirmed or timeout
+    const token = '${start}';
+    let attempts = 0;
+    const maxAttempts = 15;
+
+    function updateStatus(msg) {
+      const p = document.querySelector('p');
+      if (p) p.textContent = msg;
+    }
+
+    function poll() {
+      attempts++;
+      fetch('${base}/auth-status?token=' + token)
+        .then(r => r.json())
+        .then(d => {
+          if (d.ok) {
+            document.querySelector('h2').textContent = '✅ ¡Conectado!';
+            updateStatus('Ya puedes cerrar esta ventana');
+            setTimeout(() => window.close(), 1500);
+          } else if (attempts < maxAttempts) {
+            updateStatus('Esperando... (' + attempts + '/' + maxAttempts + ')');
+            setTimeout(poll, 1000);
+          } else {
+            document.querySelector('h2').textContent = '⏳ Procesando';
+            updateStatus('El servidor está procesando. Puedes cerrar esta ventana.');
+            setTimeout(() => window.close(), 2000);
+          }
+        })
+        .catch(() => {
+          if (attempts < maxAttempts) {
+            setTimeout(poll, 1000);
+          } else {
+            document.querySelector('h2').textContent = '⚠️ Listo';
+            updateStatus('Cierra esta ventana y vuelve a la app');
+            setTimeout(() => window.close(), 2000);
+          }
+        });
+    }
+
+    // Initial notification
     fetch('${base}/api/telegram-auth', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: '${start}' })
-    }).then(() => {
-      setTimeout(() => window.close(), 800);
-    }).catch(() => {
-      document.querySelector('h2').textContent = '⚠️ Error de conexión';
-      document.querySelector('p').textContent = 'Cierra esta ventana e intenta de nuevo';
-    });
+      body: JSON.stringify({ token: token })
+    }).catch(() => {});
+
+    // Start polling after a short delay (give Telegram time to send webhook)
+    setTimeout(poll, 2000);
   </script>
 </body>
 </html>`);
