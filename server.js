@@ -768,35 +768,50 @@ app.post(`/webhook/:secret`, async (req, res) => {
     const chatId = String(cq.from.id);
     const data   = cq.data || '';
 
-    // data looks like "start=TG_TOKEN" — extract the token
+    // data looks like "start=TG_TOKEN" or just "start" — extract the token
     let authToken = null;
+    let isDeepLink = false;
     if (data.startsWith('start=')) {
       authToken = data.replace('start=', '').trim();
+      isDeepLink = true;
     } else if (data.startsWith('tg_')) {
       authToken = data;
+      isDeepLink = true;
     }
 
-    if (authToken) {
+    // Answer the callback query to remove loading state in Telegram
+    try {
+      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ callback_query_id: cq.id }),
+      }).catch(() => {});
+    } catch(e) { /* ignore */ }
+
+    if (isDeepLink && authToken) {
+      // Deep link with token — save to DB
       try {
         await ensureUser(chatId, 'es');
-        // Save token to DB so web can poll it
         await createAuthToken(authToken, chatId);
-
-        // Answer the callback query to remove loading state in Telegram
-        await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ callback_query_id: cq.id }),
-        }).catch(() => {});
-
-        // Send user's own Telegram ID — they copy and paste it
         const lang = await getUserLang(chatId);
         await sendMessage(chatId, lang === 'es'
-          ? `👋 ¡Hola! Tu Telegram ID es:\n\n${chatId}\n\n📋 Cópialo y pégalo en la web de MisCuentas para iniciar sesión.\n\n💰 Bienvenido a MisCuentas 💰`
-          : `👋 Hi! Your Telegram ID is:\n\n${chatId}\n\n📋 Copy it and paste it on the MisCuentas web to log in.\n\n💰 Welcome to MisCuentas 💰`
+          ? `✅ ¡Cuenta conectada! Tu ID es:\n\n${chatId}\n\n📋 Cópialo y pégalo en la web.`
+          : `✅ Account connected! Your ID:\n\n${chatId}\n\n📋 Copy and paste on the web.`
         );
       } catch(e) {
         console.error('Telegram OAuth callback error:', e.message);
+      }
+    } else {
+      // Plain START click — just send welcome message with ID
+      try {
+        await ensureUser(chatId, 'es');
+        const lang = await getUserLang(chatId);
+        await sendMessage(chatId, lang === 'es'
+          ? `👋 ¡Bienvenido a MisCuentas!\n\nTu Telegram ID:\n\n${chatId}\n\n📋 Cópialo y pégalo en la web para iniciar sesión.\n\n💰 MisCuentas — Finanzas Personales 💰`
+          : `👋 Welcome to MisCuentas!\n\nYour Telegram ID:\n\n${chatId}\n\n📋 Copy and paste on the web to log in.\n\n💰 MisCuentas — Personal Finance 💰`
+        );
+      } catch(e) {
+        console.error('Telegram welcome error:', e.message);
       }
     }
     return;
