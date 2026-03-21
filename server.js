@@ -761,41 +761,39 @@ app.post(`/webhook/:secret`, async (req, res) => {
     return;
   }
 
-  // ── Handle callback_query (START button click in Telegram UI) ──────────────
+  // ── Handle deep link: t.me/Miscuentasrdbot/miscuentas?start=TOKEN ────────────
+  // When user clicks START, Telegram sends a callback_query with data containing the start parameter
   const cq = update?.callback_query;
   if (cq) {
     const chatId = String(cq.from.id);
     const data   = cq.data || '';
 
-    console.log('Callback query received, data:', data);
-
-    // data looks like "start=TG_TOKEN" or just "TG_TOKEN"
+    // data looks like "start=TG_TOKEN" — extract the token
     let authToken = null;
     if (data.startsWith('start=')) {
       authToken = data.replace('start=', '').trim();
-    } else if (data.startsWith('tg_') || data.startsWith('miscuentas')) {
+    } else if (data.startsWith('tg_')) {
       authToken = data;
     }
 
     if (authToken) {
       try {
         await ensureUser(chatId, 'es');
+        // Save token to DB so web can poll it
         await createAuthToken(authToken, chatId);
 
         // Answer the callback query to remove loading state in Telegram
-        try {
-          await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ callback_query_id: cq.id, text: '✅ ¡Cuenta conectada!' }),
-          });
-        } catch(e) { /* ignore */ }
+        await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ callback_query_id: cq.id }),
+        }).catch(() => {});
 
-        // Send confirmation message
+        // Send user's own Telegram ID — they copy and paste it
         const lang = await getUserLang(chatId);
         await sendMessage(chatId, lang === 'es'
-          ? '✅ ¡Cuenta conectada! Puedes volver a la web. Bienvenido a MisCuentas 💰'
-          : '✅ Account connected! You can go back to the web. Welcome to MisCuentas 💰'
+          ? `👋 ¡Hola! Tu Telegram ID es:\n\n${chatId}\n\n📋 Cópialo y pégalo en la web de MisCuentas para iniciar sesión.\n\n💰 Bienvenido a MisCuentas 💰`
+          : `👋 Hi! Your Telegram ID is:\n\n${chatId}\n\n📋 Copy it and paste it on the MisCuentas web to log in.\n\n💰 Welcome to MisCuentas 💰`
         );
       } catch(e) {
         console.error('Telegram OAuth callback error:', e.message);
