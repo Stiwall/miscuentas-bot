@@ -760,6 +760,50 @@ app.post(`/webhook/:secret`, async (req, res) => {
     console.log('No message in update, type:', update.update_id ? 'id:' + update.update_id : 'unknown');
     return;
   }
+
+  // ── Handle callback_query (START button click in Telegram UI) ──────────────
+  const cq = update?.callback_query;
+  if (cq) {
+    const chatId = String(cq.from.id);
+    const data   = cq.data || '';
+
+    console.log('Callback query received, data:', data);
+
+    // data looks like "start=TG_TOKEN" or just "TG_TOKEN"
+    let authToken = null;
+    if (data.startsWith('start=')) {
+      authToken = data.replace('start=', '').trim();
+    } else if (data.startsWith('tg_') || data.startsWith('miscuentas')) {
+      authToken = data;
+    }
+
+    if (authToken) {
+      try {
+        await ensureUser(chatId, 'es');
+        await createAuthToken(authToken, chatId);
+
+        // Answer the callback query to remove loading state in Telegram
+        try {
+          await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ callback_query_id: cq.id, text: '✅ ¡Cuenta conectada!' }),
+          });
+        } catch(e) { /* ignore */ }
+
+        // Send confirmation message
+        const lang = await getUserLang(chatId);
+        await sendMessage(chatId, lang === 'es'
+          ? '✅ ¡Cuenta conectada! Puedes volver a la web. Bienvenido a MisCuentas 💰'
+          : '✅ Account connected! You can go back to the web. Welcome to MisCuentas 💰'
+        );
+      } catch(e) {
+        console.error('Telegram OAuth callback error:', e.message);
+      }
+    }
+    return;
+  }
+
   if (!msg) return;
 
   const chatId = msg.chat.id;
