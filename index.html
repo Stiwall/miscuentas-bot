@@ -619,6 +619,13 @@ async function loginWithTelegram() {
 
   // Open Telegram bot with auth token
   const tgUrl = `https://t.me/Miscuentasrdbot/miscuentas?start=${authToken}`;
+
+  // Ping Railway first to wake it up, then open bot
+  statusEl.textContent = '⏳ Despertando servidor...';
+  try {
+    await fetch(`${SERVER_URL}/health`);
+  } catch(e) { /* ignorar */ }
+
   window.open(tgUrl, '_blank');
 
   // Update status to show we're waiting
@@ -661,13 +668,8 @@ async function loginWithTelegram() {
       }
     } catch(e) {
       console.error('Telegram login poll error:', e);
-      statusEl.textContent = '⚠️ Error: ' + e.message;
-      statusEl.style.background   = 'var(--accent2-dim)';
-      statusEl.style.border       = '1px solid var(--accent2)';
-      statusEl.style.color        = 'var(--accent2)';
-      btn.disabled = false;
-      clearInterval(pollInterval);
-      return;
+      // No mostrar error inmediatamente — pueden ser errores de red temporales
+      // Seguir intentando hasta el timeout
     }
 
     // Mostrar progreso cada 10 segundos
