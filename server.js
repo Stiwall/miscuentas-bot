@@ -817,8 +817,6 @@ app.post(`/webhook/:secret`, async (req, res) => {
     return;
   }
 
-  if (!msg) return;
-
   const chatId = msg.chat.id;
   const text   = msg.text || '';
 
@@ -835,23 +833,21 @@ app.post(`/webhook/:secret`, async (req, res) => {
     return;
   }
   if (authToken) {
-    if (authToken) {
-      try {
-        // Generar session token para el usuario
-        await ensureUser(String(chatId), 'es');
+    try {
+      // Generar session token para el usuario
+      await ensureUser(String(chatId), 'es');
 
-        // Guardar token en DB (persiste aunque Railway se reinicie)
-        await createAuthToken(authToken, String(chatId));
+      // Guardar token en DB (persiste aunque Railway se reinicie)
+      await createAuthToken(authToken, String(chatId));
 
-        // Responder al usuario
-        const lang = await getUserLang(String(chatId));
-        await sendMessage(chatId, lang === 'es'
-          ? '✅ ¡Cuenta conectada! Puedes volver a la web. Bienvenido a MisCuentas 💰'
-          : '✅ Account connected! You can go back to the web. Welcome to MisCuentas 💰'
-        );
-      } catch(e) {
-        console.error('Telegram OAuth error:', e.message);
-      }
+      // Responder al usuario
+      const lang = await getUserLang(String(chatId));
+      await sendMessage(chatId, lang === 'es'
+        ? '✅ ¡Cuenta conectada! Puedes volver a la web. Bienvenido a MisCuentas 💰'
+        : '✅ Account connected! You can go back to the web. Welcome to MisCuentas 💰'
+      );
+    } catch(e) {
+      console.error('Telegram OAuth error:', e.message);
     }
     return;
   }

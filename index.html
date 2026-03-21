@@ -459,7 +459,7 @@ const CAT_EMOJI = {
 const ACC_EMOJI = { efectivo:'💵', banco:'🏦', tarjeta:'💳' };
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
-let lang           = localStorage.getItem('mc_lang') || (navigator.language||'es').toLowerCase().startsWith('es') ? 'es' : 'en';
+let lang           = localStorage.getItem('mc_lang') || ((navigator.language||'es').toLowerCase().startsWith('es') ? 'es' : 'en');
 let T              = TRANSLATIONS[lang];
 let currentUser    = null;
 let txs            = [];
@@ -661,6 +661,7 @@ function applyTranslations() {
   el('exportCsvLabel').textContent  = T.exportCSV;
   el('exportPdfLabel').textContent  = T.exportPDF;
   el('exportWaLabel').textContent   = T.shareWhatsApp;
+  if (el('exportAllLabel')) el('exportAllLabel').textContent = lang === 'es' ? 'Exportar TODO (todos los meses)' : 'Export ALL (all months)';
   el('dangerTitle').textContent     = T.dangerZone;
   el('deleteMonthBtn').textContent  = T.deleteMonth;
   el('deleteAllBtn').textContent    = T.deleteAll;
