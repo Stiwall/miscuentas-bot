@@ -796,7 +796,7 @@ app.use((req, res, next) => {
 app.get('/miscuentas', (req, res) => {
   const { start } = req.query;
   if (!start || !start.startsWith('tg_')) {
-    return res.redirect('https://t.me/miscuentasbot');
+    return res.redirect('https://t.me/Miscuentasrdbot');
   }
   const base = API_BASE || `https://${req.headers.host}`;
   res.send(`<!DOCTYPE html>
